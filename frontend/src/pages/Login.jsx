@@ -1,64 +1,75 @@
-import React, {useState, useEffect} from 'react'
-import { supabase } from '../lib/supabaseClient'
-import { useNavigate } from 'react-router-dom'
+import { useState } from "react";
+import { supabase } from "../utils/supabaseClient";
+import { useNavigate } from "react-router-dom";
 
-export default function Login(){
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [loading, setLoading] = useState(false)
-  const nav = useNavigate()
+export default function Login() {
+  const navigate = useNavigate();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState("login");
 
-  useEffect(()=>{
-    // If user already signed in, redirect
-    supabase.auth.getSession().then(({ data })=>{
-      if(data?.session) nav('/dashboard')
-    })
-    supabase.auth.onAuthStateChange((event, session)=>{
-      if(session?.user) nav('/dashboard')
-    })
-  },[])
-
-  async function handleSignIn(e){
-    e.preventDefault()
-    setLoading(true)
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-    setLoading(false)
-    if(error) return alert(error.message)
-    nav('/dashboard')
-  }
-
-  async function handleSocial(provider){
-    // provider: 'google' or 'azure' (microsoft)
-    await supabase.auth.signInWithOAuth({ provider })
-  }
+  const handleAuth = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      let res;
+      if (mode === "login") {
+        res = await supabase.auth.signInWithPassword({ email, password });
+      } else {
+        res = await supabase.auth.signUp({ email, password });
+      }
+      if (res.error) throw res.error;
+      navigate("/dashboard");
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="login-box">
-        <h1 className="text-3xl font-semibold text-center">ApexNurse</h1>
-        <p className="text-center text-sm text-slate-500">Your personalized space for mastering every question</p>
-
-        <form onSubmit={handleSignIn} className="mt-6 space-y-4">
-          <input className="w-full p-3 border rounded" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} />
-          <input type="password" className="w-full p-3 border rounded" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} />
-
-          <div className="flex justify-between text-sm text-slate-600">
-            <a href="#" onClick={async ()=>{ const { data, error } = await supabase.auth.resetPasswordForEmail(email); alert('If account exists you will receive an email')}}>Forgot password</a>
-            <a href="#" onClick={()=> supabase.auth.signUp({ email, password }).then(res => alert(res.error ? res.error.message : 'Check email to confirm'))}>Sign up</a>
-          </div>
-
-          <button className="w-full p-3 bg-blue-600 text-white rounded" disabled={loading}>{loading? 'Signing...' : 'Log In'}</button>
-
-          <div className="flex gap-2 mt-4">
-            <button type="button" onClick={()=>handleSocial('google')} className="flex-1 p-2 border rounded">Continue with Google</button>
-            <button type="button" onClick={()=>handleSocial('azure')} className="flex-1 p-2 border rounded">Microsoft</button>
-          </div>
-
-          <div className="text-center mt-3">
-            <a href="/dashboard" className="text-sm text-blue-600">Get Started</a>
-          </div>
+    <div className="h-screen flex items-center justify-center bg-gray-100">
+      <div className="bg-white p-8 rounded-2xl shadow-md w-[400px]">
+        <h1 className="text-2xl font-bold mb-6 text-center">ApexNurse</h1>
+        <form onSubmit={handleAuth}>
+          <input
+            type="email"
+            className="w-full mb-3 p-2 border rounded"
+            placeholder="Email"
+            onChange={(e) => setEmail(e.target.value)}
+          />
+          <input
+            type="password"
+            className="w-full mb-3 p-2 border rounded"
+            placeholder="Password"
+            onChange={(e) => setPassword(e.target.value)}
+          />
+          <button
+            className="w-full bg-blue-600 text-white p-2 rounded hover:bg-blue-700"
+            disabled={loading}
+          >
+            {loading ? "Loading..." : mode === "login" ? "Log In" : "Sign Up"}
+          </button>
         </form>
+        <p className="mt-3 text-center">
+          {mode === "login" ? (
+            <>
+              No account?{" "}
+              <button onClick={() => setMode("signup")} className="text-blue-600">
+                Sign Up
+              </button>
+            </>
+          ) : (
+            <>
+              Have an account?{" "}
+              <button onClick={() => setMode("login")} className="text-blue-600">
+                Log In
+              </button>
+            </>
+          )}
+        </p>
       </div>
     </div>
-  )
+  );
 }
