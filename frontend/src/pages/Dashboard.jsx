@@ -1,64 +1,68 @@
 import { useEffect, useState } from "react";
-import { useAuth } from "../context/AuthContext";
-import { useNavigate } from "react-router-dom";
+import { supabase } from "../utils/supabaseClient";
 
 export default function Dashboard() {
-  const { user } = useAuth();
-  const [stats, setStats] = useState(null);
-  const navigate = useNavigate();
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [questions, setQuestions] = useState([]);
 
   useEffect(() => {
-    if (user) {
-      fetch(`${import.meta.env.VITE_BACKEND_URL}/performance/${user.id}`)
-        .then((r) => r.json())
-        .then((data) => {
-          if (data.length > 0) {
-            const attempts = data;
-            const total = attempts.reduce((a, b) => a + b.total, 0);
-            const score = attempts.reduce((a, b) => a + b.score, 0);
-            setStats({
-              attempted: total,
-              accuracy: ((score / total) * 100).toFixed(1),
-              tests: attempts.length,
-            });
-          }
-        })
-        .catch(console.error);
-    }
-  }, [user]);
+    const loadUser = async () => {
+      try {
+        const {
+          data: { user },
+          error
+        } = await supabase.auth.getUser();
+        if (error) console.error("Error fetching user:", error);
+        setUser(user || null);
+      } catch (err) {
+        console.error("Supabase auth.getUser() failed:", err);
+      }
+    };
+    loadUser();
+  }, []);
+
+  useEffect(() => {
+    const loadQuestions = async () => {
+      try {
+        const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/questions`);
+        if (!res.ok) throw new Error(`Backend error: ${res.status}`);
+        const data = await res.json();
+        setQuestions(data);
+      } catch (err) {
+        console.error("Error fetching questions:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadQuestions();
+  }, []);
+
+  if (loading) return <div className="p-10 text-center">Loading Dashboard...</div>;
+
+  if (!user) {
+    return (
+      <div className="p-10 text-center">
+        <p className="text-xl font-semibold mb-3">Session expired</p>
+        <a href="/" className="text-blue-600 underline">Log in again</a>
+      </div>
+    );
+  }
 
   return (
-    <div className="p-6">
-      <h1 className="text-3xl font-bold mb-4">
-        Welcome back, {user?.email?.split("@")[0]}
-      </h1>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <div className="p-4 bg-white rounded shadow text-center">
-          <h2 className="text-xl font-semibold">Tests Attempted</h2>
-          <p className="text-2xl">{stats?.tests || 0}</p>
-        </div>
-        <div className="p-4 bg-white rounded shadow text-center">
-          <h2 className="text-xl font-semibold">Questions Attempted</h2>
-          <p className="text-2xl">{stats?.attempted || 0}</p>
-        </div>
-        <div className="p-4 bg-white rounded shadow text-center">
-          <h2 className="text-xl font-semibold">Accuracy</h2>
-          <p className="text-2xl">{stats?.accuracy || 0}%</p>
-        </div>
-      </div>
-      <div className="flex gap-3">
-        <button
-          onClick={() => navigate("/home")}
-          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-        >
-          Take New Test
-        </button>
-        <button
-          onClick={() => navigate("/performance")}
-          className="bg-gray-200 px-4 py-2 rounded hover:bg-gray-300"
-        >
-          View Performance
-        </button>
+    <div className="min-h-screen bg-gray-50 p-6">
+      <h1 className="text-2xl font-bold text-center mb-4">Welcome {user.email}</h1>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {questions.length > 0 ? (
+          questions.map((q, i) => (
+            <div key={i} className="p-4 bg-white rounded shadow">
+              <h2 className="font-semibold">{q.paper || `Paper ${i + 1}`}</h2>
+              <p className="text-slate-600 text-sm">{q.question || "Sample question text"}</p>
+            </div>
+          ))
+        ) : (
+          <p className="text-center text-slate-500">No questions found.</p>
+        )}
       </div>
     </div>
   );
