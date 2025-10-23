@@ -1,48 +1,46 @@
 import { useEffect, useState } from "react";
-import { useAuth } from "../context/AuthContext";
+import { supabase } from "../utils/supabaseClient";
 
 export default function Performance() {
-  const { user } = useAuth();
-  const [history, setHistory] = useState([]);
+  const [attempts, setAttempts] = useState([]);
+  const [user, setUser] = useState(null);
 
   useEffect(() => {
-    if (user) {
-      fetch(`${import.meta.env.VITE_BACKEND_URL}/performance/${user.id}`)
-        .then((r) => r.json())
-        .then(setHistory)
-        .catch(console.error);
-    }
-  }, [user]);
+    const load = async () => {
+      const { data: userData } = await supabase.auth.getUser();
+      setUser(userData?.user);
+      const { data, error } = await supabase
+        .from("attempts")
+        .select("*, questions(question_text,paper,series)")
+        .eq("user_id", userData?.user?.id);
+      if (!error) setAttempts(data || []);
+    };
+    load();
+  }, []);
+
+  if (!user) return <div className="p-10 text-center">Login required</div>;
+  if (attempts.length === 0) return <div className="p-10 text-center">No attempts yet</div>;
 
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold mb-4">Performance History</h1>
-      {history.length === 0 ? (
-        <p>No test history yet.</p>
-      ) : (
-        <table className="min-w-full bg-white rounded shadow">
-          <thead>
-            <tr>
-              <th className="py-2 px-4 border-b">Paper</th>
-              <th className="py-2 px-4 border-b">Series</th>
-              <th className="py-2 px-4 border-b">Score</th>
-              <th className="py-2 px-4 border-b">Accuracy</th>
-              <th className="py-2 px-4 border-b">Time (s)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {history.map((h) => (
-              <tr key={h.id} className="text-center">
-                <td className="py-2 border-b">{h.paper}</td>
-                <td className="py-2 border-b">{h.series}</td>
-                <td className="py-2 border-b">{h.score}/{h.total}</td>
-                <td className="py-2 border-b">{h.accuracy.toFixed(1)}%</td>
-                <td className="py-2 border-b">{h.time_spent_seconds}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+    <div className="p-8 bg-gray-50 min-h-screen">
+      <h1 className="text-3xl font-bold text-center mb-6">Your Performance</h1>
+      <div className="max-w-4xl mx-auto bg-white rounded-xl shadow p-6">
+        {attempts.map((a, i) => (
+          <div key={i} className="border-b py-3">
+            <p className="font-medium">{a.questions.question_text}</p>
+            <p className="text-sm text-gray-600">
+              Paper: {a.questions.paper} | Series: {a.questions.series}
+            </p>
+            <p
+              className={`text-sm font-semibold ${
+                a.correct ? "text-green-600" : "text-red-600"
+              }`}
+            >
+              {a.correct ? "Correct" : "Incorrect"}
+            </p>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
