@@ -73,30 +73,39 @@ def get_papers():
 # 📗 GET QUESTIONS BY PAPER + SERIES
 # ---------------------------
 @app.get("/questions")
-def get_questions(paper: str, series: str):
-    """Return all questions for a given paper and series (case-insensitive)."""
-    paper = str(paper).strip()
-    series = str(series).strip()
+def get_questions(paper: str, series: str = ""):
+    """Return questions for one or more series within a paper."""
+    paper = paper.strip()
+    series_list = [s.strip() for s in series.split(";") if s.strip()]
 
-    # 1️⃣ Try exact match
-    query_exact = f"select=*&paper=eq.{paper}&series=eq.{series}&limit=9999"
-    res = requests.get(f"{SUPABASE_REST_URL}/questions?{query_exact}", headers=headers)
-    if res.status_code != 200:
-        raise HTTPException(status_code=res.status_code, detail=res.text)
-    data = res.json()
+    all_questions = []
+    base_url = f"{SUPABASE_REST_URL}/questions"
+    headers = {"apikey": SUPABASE_SERVICE_ROLE_KEY, "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}"}
 
-    # 2️⃣ If nothing found, use ilike (case-insensitive, partial)
-    if not data:
-        query_fallback = f"select=*&paper=ilike.%25{paper}%25&series=ilike.%25{series}%25&limit=9999"
-        res2 = requests.get(f"{SUPABASE_REST_URL}/questions?{query_fallback}", headers=headers)
-        if res2.status_code == 200:
-            data = res2.json()
+    if not paper:
+        raise HTTPException(status_code=400, detail="Missing paper parameter")
 
-    # 3️⃣ Still empty? Try fully unfiltered debug log
-    if not data:
+    # Build queries
+    if not series_list:
+        query = f"select=*&paper=ilike.%25{paper}%25&limit=9999"
+        res = requests.get(f"{base_url}?{query}", headers=headers)
+        if res.status_code == 200:
+            all_questions.extend(res.json())
+    else:
+        for s in series_list:
+            query = f"select=*&paper=ilike.%25{paper}%25&series=ilike.%25{s}%25&limit=9999"
+            res = requests.get(f"{base_url}?{query}", headers=headers)
+            if res.status_code == 200:
+                data = res.json()
+                if data:
+                    all_questions.extend(data)
+
+    if not all_questions:
         print(f"[WARN] No questions found for paper='{paper}', series='{series}'")
+        sample = requests.get(f"{base_url}?select=paper,series,id&limit=10", headers=headers).json()
+        print("ℹ️  Example rows:", sample)
 
-    return data or []
+    return all_questions
 
 # ---------------------------
 # 🧩 SAVE ATTEMPT
