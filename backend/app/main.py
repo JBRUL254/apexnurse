@@ -29,26 +29,33 @@ def root():
 # 1️⃣ Fetch all distinct papers and series
 @app.get("/papers")
 def get_papers():
-    res = requests.get(f"{SUPABASE_REST_URL}/questions?select=paper,series", headers=headers)
+    res = requests.get(f"{SUPABASE_REST_URL}/questions?select=paper,series&limit=9999", headers=headers)
     if res.status_code != 200:
         raise HTTPException(status_code=res.status_code, detail=res.text)
     rows = res.json()
 
     grouped = {}
     for r in rows:
-        p = r["paper"]
-        s = r["series"]
-        grouped.setdefault(p, set()).add(s)
+        paper = r.get("paper", "").strip().title()
+        series = r.get("series", "").strip().title()
+        if paper and series:
+            grouped.setdefault(paper, set()).add(series)
+
     return {p: sorted(list(s)) for p, s in grouped.items()}
 
 # 2️⃣ Fetch questions by paper + series
 @app.get("/questions")
 def get_questions(paper: str, series: str):
-    query = f"paper=eq.{paper}&series=eq.{series}"
+    paper = paper.strip()
+    series = series.strip()
+    query = f"paper=eq.{paper}&series=eq.{series}&limit=9999"
     res = requests.get(f"{SUPABASE_REST_URL}/questions?{query}&select=*", headers=headers)
     if res.status_code != 200:
         raise HTTPException(status_code=res.status_code, detail=res.text)
-    return res.json()
+    data = res.json()
+    if not data:
+        return []
+    return data
 
 # 3️⃣ Save attempts
 @app.post("/attempt")
