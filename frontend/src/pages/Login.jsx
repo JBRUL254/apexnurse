@@ -1,105 +1,71 @@
+// src/pages/Login.jsx
 import { useState } from "react";
 import { supabase } from "../utils/supabaseClient";
 import { useNavigate } from "react-router-dom";
 
 export default function Login() {
-  const navigate = useNavigate();
+  const nav = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [mode, setMode] = useState("login");
   const [loading, setLoading] = useState(false);
 
-  const handleEmailAuth = async (e) => {
+  // quick dev debug - logs supabase shape (remove in prod)
+  console.debug("Supabase client (login):", {
+    hasSupabase: !!supabase,
+    authExists: !!(supabase && supabase.auth),
+    signInFn: supabase?.auth?.signInWithPassword?.toString?.()?.slice(0, 80) ?? "missing",
+  });
+
+  const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
-      const fn =
-        mode === "login"
-          ? supabase.auth.signInWithPassword
-          : supabase.auth.signUp;
-      const { error } = await fn({ email, password });
+      if (!supabase || !supabase.auth) {
+        throw new Error("Supabase client not initialized correctly (supabase or supabase.auth is undefined). Check env vars and client setup.");
+      }
+
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
-      navigate("/dashboard");
+      // on success navigate
+      nav("/dashboard");
     } catch (err) {
-      alert(err.message);
+      console.error("Login error:", err);
+      alert("Login error: " + (err.message || JSON.stringify(err)));
     } finally {
       setLoading(false);
     }
   };
 
-  const handleGoogleLogin = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({ provider: "google" });
-    if (error) alert(error.message);
+  const handleGoogle = async () => {
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({ provider: "google" });
+      if (error) throw error;
+      // OAuth will redirect — no further action here
+    } catch (err) {
+      console.error("Google login error:", err);
+      alert("Google login error: " + (err.message || JSON.stringify(err)));
+    }
   };
 
   return (
-    <div className="h-screen flex justify-center items-center bg-gradient-to-br from-blue-50 to-white">
-      <div className="bg-white shadow-xl rounded-2xl p-8 w-[380px]">
-        <h1 className="text-3xl font-bold text-center text-blue-700 mb-4">
-          ApexNurse
-        </h1>
-        <p className="text-center text-gray-500 mb-6">
-          Your personalized space for mastering every question 🧠
-        </p>
+    <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <div className="w-[420px] bg-white p-8 rounded-lg shadow">
+        <h1 className="text-2xl font-bold text-center mb-2">ApexNurse</h1>
+        <p className="text-sm text-center mb-6 text-slate-500">Your personalised space for mastering every question</p>
 
-        <form onSubmit={handleEmailAuth} className="space-y-3">
-          <input
-            type="email"
-            placeholder="Email"
-            className="w-full border rounded px-3 py-2"
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
-          <input
-            type="password"
-            placeholder="Password"
-            className="w-full border rounded px-3 py-2"
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
-          >
-            {loading
-              ? "Please wait..."
-              : mode === "login"
-              ? "Log In"
-              : "Sign Up"}
-          </button>
+        <form onSubmit={handleLogin} className="space-y-3">
+          <input required className="w-full p-2 border rounded" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
+          <input required type="password" className="w-full p-2 border rounded" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} />
+          <button type="submit" className="w-full py-2 bg-blue-600 text-white rounded" disabled={loading}>{loading ? "Signing in..." : "Log in"}</button>
         </form>
 
-        <button
-          onClick={handleGoogleLogin}
-          className="mt-4 w-full bg-red-500 text-white py-2 rounded hover:bg-red-600"
-        >
-          Continue with Google
-        </button>
+        <div className="mt-4 text-center">
+          <button onClick={handleGoogle} className="w-full py-2 border rounded">Continue with Google</button>
+        </div>
 
-        <p className="text-center mt-4">
-          {mode === "login" ? (
-            <>
-              Don’t have an account?{" "}
-              <button
-                onClick={() => setMode("signup")}
-                className="text-blue-600 underline"
-              >
-                Sign up
-              </button>
-            </>
-          ) : (
-            <>
-              Already registered?{" "}
-              <button
-                onClick={() => setMode("login")}
-                className="text-blue-600 underline"
-              >
-                Log in
-              </button>
-            </>
-          )}
-        </p>
+        <div className="mt-3 text-sm text-center text-slate-500">
+          If login fails, open the browser console to see env/client diagnostics.
+        </div>
       </div>
     </div>
   );
