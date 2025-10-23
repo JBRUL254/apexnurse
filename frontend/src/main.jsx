@@ -1,23 +1,20 @@
-import React from 'react'
-import { createRoot } from 'react-dom/client'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
-import './index.css'
-import Login from './pages/Login'
-import Dashboard from './pages/Dashboard'
-import Practice from './pages/Practice'
-import Review from './pages/Review'
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import Dashboard from "./pages/Dashboard";
+import TestPage from "./pages/TestPage";
+import Performance from "./pages/Performance";
+import "./index.css";
 
-function App(){
-  return (
-    <BrowserRouter>
+ReactDOM.createRoot(document.getElementById("root")).render(
+  <React.StrictMode>
+    <Router>
       <Routes>
-        <Route path='/' element={<Login/>} />
-        <Route path='/dashboard' element={<Dashboard/>} />
-        <Route path='/practice' element={<Practice/>} />
-        <Route path='/review' element={<Review/>} />
+        <Route path="/" element={<Dashboard />} />
+        <Route path="/test/:paperId" element={<TestPage />} />
+        <Route path="/performance" element={<Performance />} />
       </Routes>
-    </BrowserRouter>
-  )
-}
+    </Router>
+  </React.StrictMode>
+);
 
-createRoot(document.getElementById('root')).render(<App/>)
