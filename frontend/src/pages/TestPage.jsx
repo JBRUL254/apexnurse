@@ -3,34 +3,38 @@ import { useEffect, useState } from "react";
 import { supabase } from "../utils/supabaseClient";
 
 export default function TestPage() {
-  const { paperId } = useParams(); // format: Paper 1-Series 1
+  const { paperId } = useParams(); // e.g. "Paper 1-Series 1"
+  const navigate = useNavigate();
   const [questions, setQuestions] = useState([]);
   const [current, setCurrent] = useState(0);
   const [answers, setAnswers] = useState({});
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
-  const navigate = useNavigate();
 
-  const [paper, series] = paperId.split("-");
+  // Decode paper and series
+  const [paper, series] = decodeURIComponent(paperId).split("-");
 
   useEffect(() => {
     const init = async () => {
       const { data: userData } = await supabase.auth.getUser();
       setUser(userData?.user);
 
-      const { data, error } = await supabase
-        .from("questions")
-        .select("*")
-        .eq("paper", decodeURIComponent(paper))
-        .eq("series", decodeURIComponent(series))
-        .order("id");
-
-      if (error) console.error(error);
-      else setQuestions(data || []);
-      setLoading(false);
+      try {
+        const res = await fetch(
+          `${import.meta.env.VITE_BACKEND_URL}/questions?paper=${encodeURIComponent(
+            paper
+          )}&series=${encodeURIComponent(series)}`
+        );
+        const data = await res.json();
+        setQuestions(data);
+      } catch (err) {
+        console.error("Error fetching questions:", err);
+      } finally {
+        setLoading(false);
+      }
     };
     init();
-  }, [paper, series]);
+  }, [paperId]);
 
   const handleSelect = (qid, opt) => {
     setAnswers((prev) => ({ ...prev, [qid]: opt }));
@@ -41,19 +45,24 @@ export default function TestPage() {
   };
 
   const handleFinish = async () => {
-    if (!user) return alert("Login required");
+    if (!user) return alert("Please log in first!");
     for (const q of questions) {
-      await supabase.from("attempts").insert({
-        user_id: user.id,
-        question_id: q.id,
-        selected_option: answers[q.id] || "",
-        correct: answers[q.id] === q.correct_option,
+      await fetch(`${import.meta.env.VITE_BACKEND_URL}/attempt`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: user.id,
+          question_id: q.id,
+          selected_option: answers[q.id] || "",
+          correct: answers[q.id] === q.correct_option,
+        }),
       });
     }
     navigate("/performance");
   };
 
   if (loading) return <div className="p-10 text-center">Loading questions...</div>;
+  if (!questions.length) return <div className="p-10 text-center">No questions found.</div>;
 
   const q = questions[current];
 
@@ -61,7 +70,7 @@ export default function TestPage() {
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow p-6">
         <h2 className="text-xl font-semibold mb-2">
-          {decodeURIComponent(paper)} - {decodeURIComponent(series)}
+          {paper} - {series}
         </h2>
         <p className="text-gray-600 mb-4">
           Question {current + 1} of {questions.length}
