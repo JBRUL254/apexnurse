@@ -1,49 +1,69 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from app.supabase_client import get_table, insert_row
+import os, requests
 
-app = FastAPI(title="ApexNurse API", version="2.0")
+app = FastAPI()
 
-origins = [
-    "http://localhost:5173",
-    "https://apexnurse.onrender.com"
-]
-
+# CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+SUPABASE_REST_URL = f"{SUPABASE_URL}/rest/v1"
+
+headers = {
+    "apikey": SUPABASE_SERVICE_ROLE_KEY,
+    "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+    "Content-Type": "application/json",
+}
+
 @app.get("/")
 def root():
-    return {"message": "ApexNurse Backend is Live ✅"}
+    return {"status": "ApexNurse API Live ✅"}
 
-# ✅ Fetch all questions
+# 1️⃣ Fetch all distinct papers and series
+@app.get("/papers")
+def get_papers():
+    res = requests.get(f"{SUPABASE_REST_URL}/questions?select=paper,series", headers=headers)
+    if res.status_code != 200:
+        raise HTTPException(status_code=res.status_code, detail=res.text)
+    rows = res.json()
+
+    grouped = {}
+    for r in rows:
+        p = r["paper"]
+        s = r["series"]
+        grouped.setdefault(p, set()).add(s)
+    return {p: sorted(list(s)) for p, s in grouped.items()}
+
+# 2️⃣ Fetch questions by paper + series
 @app.get("/questions")
-def get_questions():
-    try:
-        data = get_table("questions")
-        return data
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+def get_questions(paper: str, series: str):
+    query = f"paper=eq.{paper}&series=eq.{series}"
+    res = requests.get(f"{SUPABASE_REST_URL}/questions?{query}&select=*", headers=headers)
+    if res.status_code != 200:
+        raise HTTPException(status_code=res.status_code, detail=res.text)
+    return res.json()
 
-# ✅ Save user attempt
-@app.post("/attempts")
-def save_attempt(attempt: dict):
-    try:
-        insert_row("attempts", attempt)
-        return {"status": "success"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+# 3️⃣ Save attempts
+@app.post("/attempt")
+async def post_attempt(request: Request):
+    data = await request.json()
+    res = requests.post(f"{SUPABASE_REST_URL}/attempts", json=data, headers=headers)
+    if res.status_code not in (200, 201):
+        raise HTTPException(status_code=res.status_code, detail=res.text)
+    return {"status": "saved"}
 
-# ✅ Fetch all attempts for a user
-@app.get("/attempts/{user_id}")
+# 4️⃣ Fetch past attempts by user_id
+@app.get("/attempts")
 def get_attempts(user_id: str):
-    try:
-        data = get_table("attempts", f"user_id=eq.{user_id}")
-        return data
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    query = f"user_id=eq.{user_id}&select=*"
+    res = requests.get(f"{SUPABASE_REST_URL}/attempts?{query}", headers=headers)
+    if res.status_code != 200:
+        raise HTTPException(status_code=res.status_code, detail=res.text)
+    return res.json()
