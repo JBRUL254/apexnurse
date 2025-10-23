@@ -1,32 +1,13 @@
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-import os
-from supabase import create_client, Client
-from datetime import datetime
+from app.supabase_client import supabase
 
-# ---------------------------------------------------------------------
-# ✅ Initialize FastAPI
-# ---------------------------------------------------------------------
-app = FastAPI(title="ApexNurse WebService API", version="2.0")
+app = FastAPI(title="ApexNurse API", version="2.0")
 
-# ---------------------------------------------------------------------
-# ✅ Environment Variables (Render + Supabase)
-# ---------------------------------------------------------------------
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-
-if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
-    raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set")
-
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-
-# ---------------------------------------------------------------------
-# ✅ CORS Setup
-# ---------------------------------------------------------------------
+# Allow CORS for frontend URLs
 origins = [
-    "http://localhost:5173",  # local dev
-    "https://apexnurse.onrender.com",  # production frontend
+    "http://localhost:5173",               # local dev
+    "https://apexnurse.onrender.com"       # your live frontend
 ]
 
 app.add_middleware(
@@ -37,121 +18,39 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ---------------------------------------------------------------------
-# ✅ Models
-# ---------------------------------------------------------------------
-class Attempt(BaseModel):
-    user_id: str
-    question_id: int
-    selected_option: str
-    correct: bool
-    time_spent_seconds: int
-
-class Performance(BaseModel):
-    user_id: str
-    paper: str
-    series: str
-    score: int
-    total: int
-    accuracy: float
-    time_spent_seconds: int
-
-# ---------------------------------------------------------------------
-# ✅ Root Health Check
-# ---------------------------------------------------------------------
 @app.get("/")
-def home():
-    return {"message": "ApexNurse API is live!"}
+def root():
+    return {"message": "ApexNurse Backend is Live ✅"}
 
-@app.get("/health")
-def health_check():
-    return {"status": "ok"}
-
-# ---------------------------------------------------------------------
-# ✅ Get Papers + Series
-# ---------------------------------------------------------------------
-@app.get("/papers")
-def get_papers():
+# ✅ Fetch all papers, series, and quizzes
+@app.get("/questions")
+def get_questions():
     try:
-        response = supabase.table("questions").select("paper,series").execute()
-        data = response.data or []
-        papers = {}
-        for row in data:
-            paper = row["paper"]
-            series = row["series"]
-            if paper not in papers:
-                papers[paper] = set()
-            papers[paper].add(series)
-        formatted = [{"paper": p, "series": sorted(list(s))} for p, s in papers.items()]
-        return formatted
+        response = supabase.table("questions").select("*").execute()
+        return response.data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# ---------------------------------------------------------------------
-# ✅ Get Questions by Paper & Series
-# ---------------------------------------------------------------------
-@app.get("/questions/{paper}/{series}")
-def get_questions(paper: str, series: str):
+# ✅ Save attempt
+@app.post("/attempts")
+def save_attempt(attempt: dict):
     try:
-        res = supabase.table("questions")\
-            .select("*")\
-            .eq("paper", paper)\
-            .eq("series", series)\
-            .order("id", desc=False)\
+        supabase.table("attempts").insert(attempt).execute()
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ✅ Fetch user past attempts
+@app.get("/attempts/{user_id}")
+def get_attempts(user_id: str):
+    try:
+        response = (
+            supabase.table("attempts")
+            .select("*")
+            .eq("user_id", user_id)
+            .order("created_at", desc=True)
             .execute()
-        return res.data or []
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# ---------------------------------------------------------------------
-# ✅ Record Individual Attempt
-# ---------------------------------------------------------------------
-@app.post("/attempt")
-def record_attempt(attempt: Attempt):
-    try:
-        data = attempt.dict()
-        data["created_at"] = datetime.utcnow().isoformat()
-        supabase.table("attempts").insert(data).execute()
-        return {"status": "success", "data": data}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# ---------------------------------------------------------------------
-# ✅ Save Performance Summary
-# ---------------------------------------------------------------------
-@app.post("/performance")
-def save_performance(perf: Performance):
-    try:
-        payload = perf.dict()
-        payload["created_at"] = datetime.utcnow().isoformat()
-        supabase.table("performance").insert(payload).execute()
-        return {"status": "success", "performance": payload}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# ---------------------------------------------------------------------
-# ✅ Fetch User Performance History
-# ---------------------------------------------------------------------
-@app.get("/performance/{user_id}")
-def get_user_performance(user_id: str):
-    try:
-        res = supabase.table("performance").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
-        return res.data or []
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# ---------------------------------------------------------------------
-# ✅ Resume Last Unfinished Test (Optional)
-# ---------------------------------------------------------------------
-@app.get("/resume/{user_id}")
-def get_resume_data(user_id: str):
-    try:
-        res = supabase.table("attempts")\
-            .select("*")\
-            .eq("user_id", user_id)\
-            .order("created_at", desc=True)\
-            .limit(50)\
-            .execute()
-        return {"status": "success", "attempts": res.data}
+        )
+        return response.data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
