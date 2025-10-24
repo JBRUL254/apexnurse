@@ -22,11 +22,22 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
       </div>
     );
 
+  // --- Handle flexible field names ---
+  const questionText = q.question || q.question_text || q.text || "No question text found";
+  const options = [
+    q.option_a || q.opt1 || q.option1,
+    q.option_b || q.opt2 || q.option2,
+    q.option_c || q.opt3 || q.option3,
+    q.option_d || q.opt4 || q.option4,
+  ].filter(Boolean);
+  const correctAnswer = q.correct_answer || q.answer || q.correct || "";
+  const rationale = q.rationale || q.explanation || "";
+
   const total = questions.length;
 
   function submitAnswer() {
     if (!selected) return;
-    const correct = selected === q.correct_answer;
+    const correct = selected === correctAnswer;
     if (correct) setScore((s) => s + 1);
     setShowAnswer(true);
   }
@@ -52,9 +63,10 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
   }
 
   return (
-    <div className="p-6 max-w-3xl mx-auto bg-white rounded shadow mt-6">
+    <div className="p-6 max-w-3xl mx-auto bg-white rounded shadow mt-6 mb-10">
+      {/* Header */}
       <div className="flex justify-between items-center mb-3">
-        <h2 className="text-xl font-semibold">
+        <h2 className="text-lg font-semibold">
           {paper} – {series} ({current + 1}/{total})
         </h2>
         <div className="flex gap-2">
@@ -73,6 +85,7 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
         </div>
       </div>
 
+      {/* Navigation grid */}
       {showNav && (
         <div className="flex flex-wrap gap-2 mb-4">
           {questions.map((_, idx) => (
@@ -80,7 +93,7 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
               key={idx}
               onClick={() => setCurrent(idx)}
               className={`px-3 py-1 rounded ${
-                idx === current ? "bg-blue-500 text-white" : "bg-gray-200"
+                idx === current ? "bg-blue-600 text-white" : "bg-gray-200"
               }`}
             >
               {idx + 1}
@@ -89,30 +102,31 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
         </div>
       )}
 
-      <p className="mb-3 font-medium">{q.question}</p>
+      {/* Question */}
+      <p className="mb-3 font-medium">{questionText}</p>
 
+      {/* Options */}
       <div className="flex flex-col gap-2">
-        {["A", "B", "C", "D"].map((opt) => (
+        {options.map((opt, idx) => (
           <label
-            key={opt}
+            key={idx}
             className={`border p-2 rounded cursor-pointer ${
-              selected === q[`option_${opt.toLowerCase()}`]
-                ? "bg-blue-50 border-blue-400"
-                : ""
+              selected === opt ? "bg-blue-50 border-blue-400" : ""
             }`}
           >
             <input
               type="radio"
               name="option"
-              value={q[`option_${opt.toLowerCase()}`]}
+              value={opt}
               onChange={(e) => setSelected(e.target.value)}
               className="mr-2"
             />
-            {q[`option_${opt.toLowerCase()}`]}
+            {opt}
           </label>
         ))}
       </div>
 
+      {/* Buttons */}
       {!showAnswer && (
         <div className="flex justify-between mt-6">
           <button
@@ -122,12 +136,14 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
           >
             ← Previous
           </button>
+
           <button
             onClick={submitAnswer}
             className="bg-green-600 text-white px-4 py-2 rounded"
           >
             Check Answer
           </button>
+
           <button
             onClick={nextQuestion}
             disabled={current === total - 1}
@@ -138,20 +154,30 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
         </div>
       )}
 
+      {/* Answer & Rationale */}
       {showAnswer && (
-        <div className="mt-4 bg-blue-50 p-3 rounded">
+        <div className="mt-5 bg-blue-50 p-4 rounded">
           <p className="text-green-600 font-semibold">
-            Correct Answer: {q.correct_answer}
+            ✅ Correct Answer: {correctAnswer}
           </p>
-          {q.rationale && (
-            <p className="mt-2 text-gray-700">{q.rationale}</p>
+          {rationale && (
+            <p className="mt-2 text-gray-700">{rationale}</p>
           )}
-          <button
-            onClick={nextQuestion}
-            className="mt-4 bg-blue-600 text-white px-4 py-2 rounded"
-          >
-            Next Question →
-          </button>
+          <div className="flex justify-between mt-4">
+            <button
+              onClick={prevQuestion}
+              disabled={current === 0}
+              className="bg-gray-300 px-3 py-1 rounded disabled:opacity-50"
+            >
+              ← Previous
+            </button>
+            <button
+              onClick={nextQuestion}
+              className="bg-blue-600 text-white px-4 py-2 rounded"
+            >
+              Next Question →
+            </button>
+          </div>
         </div>
       )}
     </div>
