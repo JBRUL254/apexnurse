@@ -1,83 +1,72 @@
-import React, { useState } from "react";
-import { supabase } from "../supabaseClient";
+// src/pages/Login.jsx
+import { useState } from "react";
+import { supabase } from "../utils/supabaseClient";
+import { useNavigate } from "react-router-dom";
 
-export default function Login({ onLogin }) {
+export default function Login() {
+  const nav = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [isSignup, setIsSignup] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState("");
 
-  async function handleAuth(e) {
+  // quick dev debug - logs supabase shape (remove in prod)
+  console.debug("Supabase client (login):", {
+    hasSupabase: !!supabase,
+    authExists: !!(supabase && supabase.auth),
+    signInFn: supabase?.auth?.signInWithPassword?.toString?.()?.slice(0, 80) ?? "missing",
+  });
+
+  const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
-    setMessage("");
-
     try {
-      if (isSignup) {
-        const { data, error } = await supabase.auth.signUp({ email, password });
-        if (error) throw error;
-        setMessage("Signup successful! Check your email to verify your account.");
-      } else {
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
-
-        localStorage.setItem("user_id", data.user?.id);
-        localStorage.setItem("user_email", data.user?.email);
-
-        onLogin(data.user);
+      if (!supabase || !supabase.auth) {
+        throw new Error("Supabase client not initialized correctly (supabase or supabase.auth is undefined). Check env vars and client setup.");
       }
+
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      // on success navigate
+      nav("/dashboard");
     } catch (err) {
-      setMessage(err.message);
+      console.error("Login error:", err);
+      alert("Login error: " + (err.message || JSON.stringify(err)));
     } finally {
       setLoading(false);
     }
-  }
+  };
+
+  const handleGoogle = async () => {
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({ provider: "google" });
+      if (error) throw error;
+      // OAuth will redirect — no further action here
+    } catch (err) {
+      console.error("Google login error:", err);
+      alert("Google login error: " + (err.message || JSON.stringify(err)));
+    }
+  };
 
   return (
-    <div className="flex flex-col justify-center items-center h-screen bg-gray-100">
-      <div className="bg-white p-8 rounded shadow-md w-96">
-        <h2 className="text-2xl font-semibold mb-6 text-center">
-          {isSignup ? "Create Account" : "Login"}
-        </h2>
-        <form onSubmit={handleAuth}>
-          <input
-            type="email"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="border p-2 w-full mb-3 rounded"
-            required
-          />
-          <input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="border p-2 w-full mb-4 rounded"
-            required
-          />
+    <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <div className="w-[420px] bg-white p-8 rounded-lg shadow">
+        <h1 className="text-2xl font-bold text-center mb-2">ApexNurse</h1>
+        <p className="text-sm text-center mb-6 text-slate-500">Your personalised space for mastering every question</p>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="bg-blue-600 text-white w-full py-2 rounded hover:bg-blue-700"
-          >
-            {loading ? "Please wait..." : isSignup ? "Sign Up" : "Login"}
-          </button>
+        <form onSubmit={handleLogin} className="space-y-3">
+          <input required className="w-full p-2 border rounded" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
+          <input required type="password" className="w-full p-2 border rounded" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} />
+          <button type="submit" className="w-full py-2 bg-blue-600 text-white rounded" disabled={loading}>{loading ? "Signing in..." : "Log in"}</button>
         </form>
 
-        {message && <p className="mt-3 text-center text-red-600">{message}</p>}
+        <div className="mt-4 text-center">
+          <button onClick={handleGoogle} className="w
+-full py-2 border rounded">Continue with Google</button>
+        </div>
 
-        <p className="mt-4 text-sm text-center text-gray-600">
-          {isSignup ? "Already have an account?" : "Don't have an account?"}{" "}
-          <button
-            className="text-blue-600 underline"
-            onClick={() => setIsSignup(!isSignup)}
-          >
-            {isSignup ? "Login" : "Sign up"}
-          </button>
-        </p>
+        <div className="mt-3 text-sm text-center text-slate-500">
+          If login fails, open the browser console to see env/client diagnostics.
+        </div>
       </div>
     </div>
   );
