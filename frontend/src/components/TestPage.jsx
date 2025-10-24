@@ -35,7 +35,7 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
 
   const total = questions.length;
 
-  function submitAnswer() {
+  function handleCheckAnswer() {
     if (!selected) return;
     const correct = selected === correctAnswer;
     if (correct) setScore((s) => s + 1);
@@ -118,6 +118,7 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
               type="radio"
               name="option"
               value={opt}
+              checked={selected === opt}
               onChange={(e) => setSelected(e.target.value)}
               className="mr-2"
             />
@@ -126,58 +127,41 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
         ))}
       </div>
 
-      {/* Buttons */}
-      {!showAnswer && (
-        <div className="flex justify-between mt-6">
-          <button
-            onClick={prevQuestion}
-            disabled={current === 0}
-            className="bg-gray-300 px-3 py-1 rounded disabled:opacity-50"
-          >
-            ← Previous
-          </button>
+      {/* Control buttons */}
+      <div className="flex justify-between mt-6">
+        <button
+          onClick={prevQuestion}
+          disabled={current === 0}
+          className="bg-gray-300 px-3 py-1 rounded disabled:opacity-50"
+        >
+          ← Previous
+        </button>
 
+        {!showAnswer && (
           <button
-            onClick={submitAnswer}
+            onClick={handleCheckAnswer}
             className="bg-green-600 text-white px-4 py-2 rounded"
           >
             Check Answer
           </button>
+        )}
 
-          <button
-            onClick={nextQuestion}
-            disabled={current === total - 1}
-            className="bg-blue-600 text-white px-3 py-1 rounded disabled:opacity-50"
-          >
-            Next →
-          </button>
-        </div>
-      )}
+        <button
+          onClick={nextQuestion}
+          disabled={current === total - 1}
+          className="bg-blue-600 text-white px-3 py-1 rounded disabled:opacity-50"
+        >
+          Next →
+        </button>
+      </div>
 
-      {/* Answer & Rationale */}
+      {/* Answer & Rationale (only after Check Answer) */}
       {showAnswer && (
         <div className="mt-5 bg-blue-50 p-4 rounded">
           <p className="text-green-600 font-semibold">
             ✅ Correct Answer: {correctAnswer}
           </p>
-          {rationale && (
-            <p className="mt-2 text-gray-700">{rationale}</p>
-          )}
-          <div className="flex justify-between mt-4">
-            <button
-              onClick={prevQuestion}
-              disabled={current === 0}
-              className="bg-gray-300 px-3 py-1 rounded disabled:opacity-50"
-            >
-              ← Previous
-            </button>
-            <button
-              onClick={nextQuestion}
-              className="bg-blue-600 text-white px-4 py-2 rounded"
-            >
-              Next Question →
-            </button>
-          </div>
+          {rationale && <p className="mt-2 text-gray-700">{rationale}</p>}
         </div>
       )}
     </div>
