@@ -2,12 +2,13 @@ import React, { useState } from "react";
 
 export default function TestPage({ questions, finishTest, paper, series, goBack }) {
   const [current, setCurrent] = useState(0);
-  const [selectedAnswers, setSelectedAnswers] = useState({}); // ✅ store selections per question
+  const [selectedAnswers, setSelectedAnswers] = useState({}); // ✅ store selected answer per question
   const [showAnswer, setShowAnswer] = useState(false);
   const [score, setScore] = useState(0);
   const [showNav, setShowNav] = useState(false);
 
   const q = questions[current];
+
   if (!q)
     return (
       <div className="p-10 text-center">
@@ -21,23 +22,29 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
       </div>
     );
 
+  // --- Handle flexible field names ---
   const questionText = q.question || q.question_text || q.text || "No question text found";
+
   const options = [
     q.option_a || q.opt1 || q.option1,
     q.option_b || q.opt2 || q.option2,
     q.option_c || q.opt3 || q.option3,
     q.option_d || q.opt4 || q.option4,
   ].filter(Boolean);
+
+  // 🧹 Clean any "Answer:" text to avoid spoilers
+  const cleanedOptions = options.map((opt) => opt.replace(/Answer:.*/i, "").trim());
+
   const correctAnswer = q.correct_answer || q.answer || q.correct || "";
   const rationale = q.rationale || q.explanation || "";
-
   const total = questions.length;
-  const selected = selectedAnswers[current] || null;
+
+  const selected = selectedAnswers[current] || null; // ✅ get selected for current question
 
   function handleSelect(option) {
     setSelectedAnswers((prev) => ({
       ...prev,
-      [current]: option, // ✅ store selection only for current question
+      [current]: option, // ✅ save choice for current question
     }));
   }
 
@@ -68,6 +75,7 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
 
   return (
     <div className="p-6 max-w-3xl mx-auto bg-white rounded shadow mt-6 mb-10">
+      {/* Header */}
       <div className="flex justify-between items-center mb-3">
         <h2 className="text-lg font-semibold">
           {paper} – {series} ({current + 1}/{total})
@@ -88,6 +96,7 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
         </div>
       </div>
 
+      {/* Navigation grid */}
       {showNav && (
         <div className="flex flex-wrap gap-2 mb-4">
           {questions.map((_, idx) => (
@@ -104,10 +113,12 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
         </div>
       )}
 
+      {/* Question */}
       <p className="mb-3 font-medium">{questionText}</p>
 
+      {/* Options */}
       <div className="flex flex-col gap-2">
-        {options.map((opt, idx) => (
+        {cleanedOptions.map((opt, idx) => (
           <label
             key={idx}
             className={`border p-2 rounded cursor-pointer ${
@@ -116,7 +127,7 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
           >
             <input
               type="radio"
-              name={`option-${current}`} // ✅ unique group per question
+              name={`option-${current}`} // ✅ unique per question
               value={opt}
               checked={selected === opt}
               onChange={() => handleSelect(opt)}
@@ -127,6 +138,7 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
         ))}
       </div>
 
+      {/* Buttons */}
       {!showAnswer && (
         <div className="flex justify-between mt-6">
           <button
@@ -154,6 +166,7 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
         </div>
       )}
 
+      {/* Answer & Rationale */}
       {showAnswer && (
         <div className="mt-5 bg-blue-50 p-4 rounded">
           <p className="text-green-600 font-semibold">
