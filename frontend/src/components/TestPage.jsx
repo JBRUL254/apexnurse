@@ -24,18 +24,24 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
 
   // --- Handle flexible field names ---
   const questionText = q.question || q.question_text || q.text || "No question text found";
+
   const options = [
     q.option_a || q.opt1 || q.option1,
     q.option_b || q.opt2 || q.option2,
     q.option_c || q.opt3 || q.option3,
     q.option_d || q.opt4 || q.option4,
   ].filter(Boolean);
+
+  // 🧹 Remove any "Answer:" text from the options to prevent revealing correct answers
+  const cleanedOptions = options.map(opt =>
+    opt.replace(/Answer:.*/i, "").trim()
+  );
+
   const correctAnswer = q.correct_answer || q.answer || q.correct || "";
   const rationale = q.rationale || q.explanation || "";
-
   const total = questions.length;
 
-  function handleCheckAnswer() {
+  function submitAnswer() {
     if (!selected) return;
     const correct = selected === correctAnswer;
     if (correct) setScore((s) => s + 1);
@@ -107,7 +113,7 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
 
       {/* Options */}
       <div className="flex flex-col gap-2">
-        {options.map((opt, idx) => (
+        {cleanedOptions.map((opt, idx) => (
           <label
             key={idx}
             className={`border p-2 rounded cursor-pointer ${
@@ -118,7 +124,6 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
               type="radio"
               name="option"
               value={opt}
-              checked={selected === opt}
               onChange={(e) => setSelected(e.target.value)}
               className="mr-2"
             />
@@ -127,41 +132,56 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
         ))}
       </div>
 
-      {/* Control buttons */}
-      <div className="flex justify-between mt-6">
-        <button
-          onClick={prevQuestion}
-          disabled={current === 0}
-          className="bg-gray-300 px-3 py-1 rounded disabled:opacity-50"
-        >
-          ← Previous
-        </button>
-
-        {!showAnswer && (
+      {/* Buttons */}
+      {!showAnswer && (
+        <div className="flex justify-between mt-6">
           <button
-            onClick={handleCheckAnswer}
+            onClick={prevQuestion}
+            disabled={current === 0}
+            className="bg-gray-300 px-3 py-1 rounded disabled:opacity-50"
+          >
+            ← Previous
+          </button>
+
+          <button
+            onClick={submitAnswer}
             className="bg-green-600 text-white px-4 py-2 rounded"
           >
             Check Answer
           </button>
-        )}
 
-        <button
-          onClick={nextQuestion}
-          disabled={current === total - 1}
-          className="bg-blue-600 text-white px-3 py-1 rounded disabled:opacity-50"
-        >
-          Next →
-        </button>
-      </div>
+          <button
+            onClick={nextQuestion}
+            disabled={current === total - 1}
+            className="bg-blue-600 text-white px-3 py-1 rounded disabled:opacity-50"
+          >
+            Next →
+          </button>
+        </div>
+      )}
 
-      {/* Answer & Rationale (only after Check Answer) */}
+      {/* Answer & Rationale */}
       {showAnswer && (
         <div className="mt-5 bg-blue-50 p-4 rounded">
           <p className="text-green-600 font-semibold">
             ✅ Correct Answer: {correctAnswer}
           </p>
           {rationale && <p className="mt-2 text-gray-700">{rationale}</p>}
+          <div className="flex justify-between mt-4">
+            <button
+              onClick={prevQuestion}
+              disabled={current === 0}
+              className="bg-gray-300 px-3 py-1 rounded disabled:opacity-50"
+            >
+              ← Previous
+            </button>
+            <button
+              onClick={nextQuestion}
+              className="bg-blue-600 text-white px-4 py-2 rounded"
+            >
+              Next Question →
+            </button>
+          </div>
         </div>
       )}
     </div>
