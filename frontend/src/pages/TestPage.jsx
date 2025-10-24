@@ -1,128 +1,159 @@
-import { useParams, useNavigate } from "react-router-dom";
-import { useEffect, useState } from "react";
-import { supabase } from "../utils/supabaseClient";
+import React, { useState } from "react";
 
-export default function TestPage() {
-  const { paperId } = useParams(); // e.g. "Paper 1-Series 1"
-  const navigate = useNavigate();
-  const [questions, setQuestions] = useState([]);
+export default function TestPage({ questions, finishTest, paper, series, goBack }) {
   const [current, setCurrent] = useState(0);
-  const [answers, setAnswers] = useState({});
-  const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState(null);
-
-  // Decode paper and series
-  const [paper, series] = decodeURIComponent(paperId).split("-");
-
-  useEffect(() => {
-    const init = async () => {
-      const { data: userData } = await supabase.auth.getUser();
-      setUser(userData?.user);
-
-      try {
-        const res = await fetch(
-          `${import.meta.env.VITE_BACKEND_URL}/questions?paper=${encodeURIComponent(
-            paper
-          )}&series=${encodeURIComponent(series)}`
-        );
-        const data = await res.json();
-        setQuestions(data);
-      } catch (err) {
-        console.error("Error fetching questions:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    init();
-  }, [paperId]);
-
-  const handleSelect = (qid, opt) => {
-    setAnswers((prev) => ({ ...prev, [qid]: opt }));
-  };
-
-  const handleNext = () => {
-    if (current < questions.length - 1) setCurrent(current + 1);
-  };
-
-  const handleFinish = async () => {
-    if (!user) return alert("Please log in first!");
-    for (const q of questions) {
-      await fetch(`${import.meta.env.VITE_BACKEND_URL}/attempt`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user_id: user.id,
-          question_id: q.id,
-          selected_option: answers[q.id] || "",
-          correct: answers[q.id] === q.correct_option,
-        }),
-      });
-    }
-    navigate("/performance");
-  };
-
-  if (loading) return <div className="p-10 text-center">Loading questions...</div>;
-  if (!questions.length) return <div className="p-10 text-center">No questions found.</div>;
+  const [selected, setSelected] = useState(null);
+  const [showAnswer, setShowAnswer] = useState(false);
+  const [score, setScore] = useState(0);
+  const [showNav, setShowNav] = useState(false);
 
   const q = questions[current];
 
+  if (!q)
+    return (
+      <div className="p-10 text-center">
+        <p>No questions found.</p>
+        <button
+          onClick={goBack}
+          className="mt-4 bg-blue-600 text-white px-4 py-2 rounded"
+        >
+          ← Back
+        </button>
+      </div>
+    );
+
+  const total = questions.length;
+
+  function submitAnswer() {
+    if (!selected) return;
+    const correct = selected === q.correct_answer;
+    if (correct) setScore((s) => s + 1);
+    setShowAnswer(true);
+  }
+
+  function nextQuestion() {
+    if (current < total - 1) {
+      setCurrent((c) => c + 1);
+      setSelected(null);
+      setShowAnswer(false);
+    }
+  }
+
+  function prevQuestion() {
+    if (current > 0) {
+      setCurrent((c) => c - 1);
+      setSelected(null);
+      setShowAnswer(false);
+    }
+  }
+
+  function handleFinish() {
+    finishTest(score, total);
+  }
+
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow p-6">
-        <h2 className="text-xl font-semibold mb-2">
-          {paper} - {series}
+    <div className="p-6 max-w-3xl mx-auto bg-white rounded shadow mt-6">
+      <div className="flex justify-between items-center mb-3">
+        <h2 className="text-xl font-semibold">
+          {paper} – {series} ({current + 1}/{total})
         </h2>
-        <p className="text-gray-600 mb-4">
-          Question {current + 1} of {questions.length}
-        </p>
-
-        <div className="mb-6">
-          <p className="font-medium mb-4">{q?.question_text}</p>
-          {["a", "b", "c", "d"].map((optKey) => {
-            const optVal = q[`option_${optKey}`];
-            return (
-              optVal && (
-                <label key={optKey} className="block mb-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name={`q-${q.id}`}
-                    value={optKey.toUpperCase()}
-                    checked={answers[q.id] === optKey.toUpperCase()}
-                    onChange={() => handleSelect(q.id, optKey.toUpperCase())}
-                    className="mr-2"
-                  />
-                  {optVal}
-                </label>
-              )
-            );
-          })}
-        </div>
-
-        <div className="flex justify-between">
+        <div className="flex gap-2">
           <button
-            disabled={current === 0}
-            onClick={() => setCurrent(current - 1)}
-            className="px-4 py-2 bg-gray-300 rounded-full hover:bg-gray-400"
+            onClick={() => setShowNav(!showNav)}
+            className="bg-gray-200 px-3 py-1 rounded"
           >
-            Previous
+            ☰
           </button>
-          {current < questions.length - 1 ? (
-            <button
-              onClick={handleNext}
-              className="px-4 py-2 bg-blue-600 text-white rounded-full hover:bg-blue-700"
-            >
-              Next
-            </button>
-          ) : (
-            <button
-              onClick={handleFinish}
-              className="px-4 py-2 bg-green-600 text-white rounded-full hover:bg-green-700"
-            >
-              Finish Test
-            </button>
-          )}
+          <button
+            onClick={handleFinish}
+            className="bg-red-500 text-white px-3 py-1 rounded"
+          >
+            Finish Test
+          </button>
         </div>
       </div>
+
+      {showNav && (
+        <div className="flex flex-wrap gap-2 mb-4">
+          {questions.map((_, idx) => (
+            <button
+              key={idx}
+              onClick={() => setCurrent(idx)}
+              className={`px-3 py-1 rounded ${
+                idx === current ? "bg-blue-500 text-white" : "bg-gray-200"
+              }`}
+            >
+              {idx + 1}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <p className="mb-3 font-medium">{q.question}</p>
+
+      <div className="flex flex-col gap-2">
+        {["A", "B", "C", "D"].map((opt) => (
+          <label
+            key={opt}
+            className={`border p-2 rounded cursor-pointer ${
+              selected === q[`option_${opt.toLowerCase()}`]
+                ? "bg-blue-50 border-blue-400"
+                : ""
+            }`}
+          >
+            <input
+              type="radio"
+              name="option"
+              value={q[`option_${opt.toLowerCase()}`]}
+              onChange={(e) => setSelected(e.target.value)}
+              className="mr-2"
+            />
+            {q[`option_${opt.toLowerCase()}`]}
+          </label>
+        ))}
+      </div>
+
+      {!showAnswer && (
+        <div className="flex justify-between mt-6">
+          <button
+            onClick={prevQuestion}
+            disabled={current === 0}
+            className="bg-gray-300 px-3 py-1 rounded disabled:opacity-50"
+          >
+            ← Previous
+          </button>
+          <button
+            onClick={submitAnswer}
+            className="bg-green-600 text-white px-4 py-2 rounded"
+          >
+            Check Answer
+          </button>
+          <button
+            onClick={nextQuestion}
+            disabled={current === total - 1}
+            className="bg-blue-600 text-white px-3 py-1 rounded disabled:opacity-50"
+          >
+            Next →
+          </button>
+        </div>
+      )}
+
+      {showAnswer && (
+        <div className="mt-4 bg-blue-50 p-3 rounded">
+          <p className="text-green-600 font-semibold">
+            Correct Answer: {q.correct_answer}
+          </p>
+          {q.rationale && (
+            <p className="mt-2 text-gray-700">{q.rationale}</p>
+          )}
+          <button
+            onClick={nextQuestion}
+            className="mt-4 bg-blue-600 text-white px-4 py-2 rounded"
+          >
+            Next Question →
+          </button>
+        </div>
+      )}
     </div>
   );
 }
