@@ -1,84 +1,150 @@
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from supabase import create_client, Client
-import os
+from functools import lru_cache
+import os, requests
 
-# Load environment variables
+app = FastAPI(title="ApexNurse Webservice")
+
+# ==============================
+# CONFIGURATION
+# ==============================
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
 if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
-    raise RuntimeError("❌ Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variable")
+    raise RuntimeError("❌ SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set")
 
-# Initialize Supabase
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+SUPABASE_REST_URL = f"{SUPABASE_URL}/rest/v1"
+HEADERS = {
+    "apikey": SUPABASE_SERVICE_ROLE_KEY,
+    "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+}
 
-# FastAPI app
-app = FastAPI(title="ApexNurse WebService API", version="2.0")
-
-# Enable CORS
+# ==============================
+# MIDDLEWARE
+# ==============================
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# ==============================
+# BASIC ROUTE
+# ==============================
 @app.get("/")
 def root():
-    return {"message": "✅ ApexNurse API running successfully"}
+    return {"message": "✅ ApexNurse backend running successfully."}
 
+
+# ==============================
+# FETCH PAPERS
+# ==============================
 @app.get("/papers")
-def get_papers():
-    """Return a list of available papers and their series"""
-    try:
-        data = supabase.table("questions").select("paper,series").execute()
-        papers = {}
-        for row in data.data:
-            paper = row["paper"]
-            series = row["series"]
-            if paper not in papers:
-                papers[paper] = set()
-            papers[paper].add(series)
-        return {"papers": {p: sorted(list(s)) for p, s in papers.items()}}
-    except Exception as e:
-        print("Error fetching papers:", e)
-        return {"error": str(e)}
+def list_papers():
+    """List distinct papers in Supabase"""
+    url = f"{SUPABASE_REST_URL}/questions?select=paper"
+    res = requests.get(url, headers=HEADERS)
+    if res.status_code != 200:
+        raise HTTPException(status_code=500, detail="Failed to fetch papers")
+    papers = sorted({q.get("paper") for q in res.json() if q.get("paper")})
+    return papers
 
+
+# ==============================
+# FETCH SERIES FOR PAPER
+# ==============================
+@app.get("/series")
+def list_series(paper: str):
+    """List distinct series for a paper"""
+    if not paper:
+        raise HTTPException(status_code=400, detail="Missing paper name")
+    url = f"{SUPABASE_REST_URL}/questions?select=series&paper=ilike.%25{paper}%25"
+    res = requests.get(url, headers=HEADERS)
+    if res.status_code != 200:
+        raise HTTPException(status_code=500, detail="Failed to fetch series")
+    s = sorted({q.get("series") for q in res.json() if q.get("series")})
+    return s
+
+
+# ==============================
+# MAIN QUESTION FETCH
+# ==============================
 @app.get("/questions")
-def get_questions(
-    paper: str = Query(..., description="e.g. Paper1 or Paper2"),
-    series: str = Query(..., description="Series name, e.g. Paper1_revision_series_1")
-):
-    """Fetch questions filtered by paper and series"""
-    try:
-        response = supabase.table("questions").select("*").eq("paper", paper).eq("series", series).execute()
+def get_questions(paper: str, series: str = ""):
+    """
+    Fetch questions for one or multiple series within a paper.
+    """
+    if not paper:
+        raise HTTPException(status_code=400, detail="Missing paper parameter")
 
-        if not response.data or len(response.data) == 0:
-            print(f"[WARN] No questions found for paper='{paper}', series='{series}'")
-            return []
+    paper = paper.strip()
+    series_list = [s.strip() for s in series.split(";") if s.strip()]
+    all_questions = []
 
-        # Normalize question structure for frontend
-        formatted = []
-        for q in response.data:
-            formatted.append({
-                "id": q.get("id"),
-                "question": q.get("question") or q.get("text"),
-                "options": q.get("options") or [
-                    q.get("option_a"),
-                    q.get("option_b"),
-                    q.get("option_c"),
-                    q.get("option_d"),
-                ],
-                "correct_answer": q.get("correct_answer"),
-                "rationale": q.get("rationale", ""),
-            })
-        return formatted
-    except Exception as e:
-        print("❌ Error fetching questions:", e)
-        return {"error": str(e)}
+    if not series_list:
+        query = f"select=*&paper=ilike.%25{paper}%25&limit=9999"
+        res = requests.get(f"{SUPABASE_REST_URL}/questions?{query}", headers=HEADERS)
+        if res.status_code == 200:
+            all_questions.extend(res.json())
+    else:
+        for s in series_list:
+            query = f"select=*&paper=ilike.%25{paper}%25&series=ilike.%25{s}%25&limit=9999"
+            res = requests.get(f"{SUPABASE_REST_URL}/questions?{query}", headers=HEADERS)
+            if res.status_code == 200:
+                data = res.json()
+                if data:
+                    all_questions.extend(data)
 
+    if not all_questions:
+        print(f"[WARN] No questions found for paper='{paper}', series='{series}'")
+        try:
+            sample = requests.get(f"{SUPABASE_REST_URL}/questions?select=paper,series,id&limit=10", headers=HEADERS).json()
+            print("ℹ️ Example rows in DB:", sample)
+        except Exception:
+            pass
+
+    return all_questions
+
+
+# ==============================
+# CACHED VERSION (faster repeat load)
+# ==============================
+@lru_cache(maxsize=64)
+def cached_fetch(paper, series):
+    data = get_questions(paper, series)
+    # Convert list to tuple for lru_cache compatibility
+    return tuple([tuple(q.items()) for q in data])
+
+
+@app.get("/cached_questions")
+def cached_questions(paper: str, series: str = ""):
+    """Serve questions with caching"""
+    data = cached_fetch(paper, series)
+    # Convert back to list of dicts
+    return [dict(d) for d in data]
+
+
+# ==============================
+# PERFORMANCE / ATTEMPTS (Optional)
+# ==============================
+@app.post("/performance")
+def save_performance(payload: dict):
+    """
+    Save user performance summary to Supabase (optional)
+    Expected: {user_id, paper, series, score, total}
+    """
+    url = f"{SUPABASE_REST_URL}/performance"
+    res = requests.post(url, headers=HEADERS, json=payload)
+    if res.status_code not in (200, 201):
+        raise HTTPException(status_code=res.status_code, detail=res.text)
+    return {"status": "ok"}
+
+
+# ==============================
+# HEALTHCHECK
+# ==============================
 @app.get("/health")
-def health_check():
+def health():
     return {"status": "ok"}
