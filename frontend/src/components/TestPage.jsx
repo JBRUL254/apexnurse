@@ -1,124 +1,144 @@
-// src/components/TestPage.jsx
 import React, { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import axios from "axios";
 
-function TestPage() {
-  const { paper, series } = useParams();
-  const [questions, setQuestions] = useState([]);
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://apexnurses-backend.onrender.com";
+
+const TestPage = ({ selectedSeries, onFinish }) => {
+  const [questions, setQuestions] = useState([]); // ✅ Always initialize as empty array
   const [loading, setLoading] = useState(true);
-  const [current, setCurrent] = useState(0);
-  const [selected, setSelected] = useState(null);
+  const [error, setError] = useState("");
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [selectedOption, setSelectedOption] = useState(null);
   const [showAnswer, setShowAnswer] = useState(false);
-  const navigate = useNavigate();
 
   useEffect(() => {
     const fetchQuestions = async () => {
       try {
-        const res = await fetch(
-          `${import.meta.env.VITE_BACKEND_URL}/questions?paper=${paper}&series=${series}`
-        );
-        const data = await res.json();
-        if (data.questions) {
-          setQuestions(data.questions);
+        setLoading(true);
+        setError("");
+        const paper = selectedSeries?.startsWith("Paper2") ? "Paper2" : "Paper1";
+        const response = await axios.get(`${API_BASE_URL}/questions`, {
+          params: { paper, series: selectedSeries },
+        });
+
+        if (response.data && Array.isArray(response.data.questions)) {
+          setQuestions(response.data.questions);
+        } else {
+          setQuestions([]);
+          setError("No questions found for this paper or series.");
         }
       } catch (err) {
-        console.error("Error loading questions:", err);
+        console.error("Error fetching questions:", err);
+        setError("Failed to load questions. Please try again.");
       } finally {
         setLoading(false);
       }
     };
+
     fetchQuestions();
-  }, [paper, series]);
+  }, [selectedSeries]);
 
-  if (loading) return <div className="p-6 text-center text-gray-600">Loading questions...</div>;
-  if (questions.length === 0) return <div className="p-6 text-center text-red-500">No questions found.</div>;
+  const currentQuestion = questions[currentIndex];
 
-  const q = questions[current];
-
-  const checkAnswer = () => setShowAnswer(true);
-  const nextQuestion = () => {
-    setShowAnswer(false);
-    setSelected(null);
-    if (current < questions.length - 1) setCurrent(current + 1);
+  const handleNext = () => {
+    if (currentIndex < questions.length - 1) {
+      setCurrentIndex(currentIndex + 1);
+      setSelectedOption(null);
+      setShowAnswer(false);
+    }
   };
-  const prevQuestion = () => {
-    setShowAnswer(false);
-    setSelected(null);
-    if (current > 0) setCurrent(current - 1);
+
+  const handlePrevious = () => {
+    if (currentIndex > 0) {
+      setCurrentIndex(currentIndex - 1);
+      setSelectedOption(null);
+      setShowAnswer(false);
+    }
   };
-  const finishTest = () => navigate("/performance");
+
+  const handleCheckAnswer = () => setShowAnswer(true);
+
+  // ✅ UI safety guards
+  if (loading) return <div className="text-center p-10 text-lg">Loading questions...</div>;
+  if (error) return <div className="text-center p-10 text-red-500">{error}</div>;
+  if (!questions || questions.length === 0)
+    return <div className="text-center p-10 text-gray-600">No questions available.</div>;
 
   return (
-    <div className="max-w-3xl mx-auto p-4 bg-white shadow rounded-lg">
-      <h2 className="text-xl font-semibold text-blue-700 mb-4">
-        {paper} — {series.replace(/_/g, " ")}
-      </h2>
+    <div className="p-4 sm:p-8 bg-white rounded-2xl shadow-lg max-w-3xl mx-auto">
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="font-bold text-xl">
+          {selectedSeries} ({currentIndex + 1}/{questions.length})
+        </h2>
+        <button
+          className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
+          onClick={onFinish}
+        >
+          Finish Test
+        </button>
+      </div>
 
-      <p className="text-gray-800 mb-3">
-        {q.question || "Question not found."}
-      </p>
+      <p className="font-medium text-lg mb-4">{currentQuestion.question_text}</p>
 
       <div className="space-y-2">
-        {["A", "B", "C", "D"].map((opt) => (
-          <label key={opt} className={`block p-2 border rounded cursor-pointer ${
-              selected === opt ? "bg-blue-100 border-blue-400" : "hover:bg-gray-50"
-            }`}>
+        {currentQuestion.options.map((option, index) => (
+          <label
+            key={index}
+            className={`block p-3 border rounded cursor-pointer transition ${
+              selectedOption === option ? "border-blue-500 bg-blue-50" : "hover:bg-gray-50"
+            }`}
+          >
             <input
               type="radio"
               name="answer"
-              value={opt}
-              checked={selected === opt}
-              onChange={() => setSelected(opt)}
+              value={option}
+              checked={selectedOption === option}
+              onChange={() => setSelectedOption(option)}
               className="mr-2"
             />
-            {q[`option_${opt.toLowerCase()}`]}
+            {option}
           </label>
         ))}
       </div>
 
-      {!showAnswer && (
+      <div className="flex justify-between mt-6">
         <button
-          onClick={checkAnswer}
-          disabled={!selected}
-          className="mt-4 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
+          onClick={handlePrevious}
+          disabled={currentIndex === 0}
+          className="px-4 py-2 bg-gray-200 rounded disabled:opacity-50"
+        >
+          ← Previous
+        </button>
+
+        <button
+          onClick={handleCheckAnswer}
+          disabled={!selectedOption}
+          className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
         >
           Check Answer
         </button>
-      )}
+
+        <button
+          onClick={handleNext}
+          disabled={currentIndex === questions.length - 1}
+          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+        >
+          Next →
+        </button>
+      </div>
 
       {showAnswer && (
-        <div className="mt-4 p-3 bg-green-50 border-l-4 border-green-500">
-          <p className="text-green-700 font-semibold">Correct Answer: {q.answer}</p>
-          <p className="text-gray-700 mt-1">{q.rationale || "No rationale provided."}</p>
+        <div className="mt-4 p-4 border-t">
+          <p className="font-semibold text-green-600">
+            ✅ Correct Answer: {currentQuestion.correct_answer}
+          </p>
+          {currentQuestion.rationale && (
+            <p className="text-gray-700 mt-2">💡 {currentQuestion.rationale}</p>
+          )}
         </div>
       )}
-
-      <div className="flex justify-between mt-6">
-        <button
-          onClick={prevQuestion}
-          disabled={current === 0}
-          className="bg-gray-300 hover:bg-gray-400 px-3 py-1 rounded"
-        >
-          Previous
-        </button>
-        {current < questions.length - 1 ? (
-          <button
-            onClick={nextQuestion}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded"
-          >
-            Next
-          </button>
-        ) : (
-          <button
-            onClick={finishTest}
-            className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded"
-          >
-            Finish Test
-          </button>
-        )}
-      </div>
     </div>
   );
-}
+};
 
 export default TestPage;
