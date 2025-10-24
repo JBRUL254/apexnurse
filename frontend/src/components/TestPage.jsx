@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import supabase from "../supabaseClient";
 
-const TestPage = () => {
+export default function TestPage() {
   const { paper, series } = useParams();
   const navigate = useNavigate();
 
@@ -11,29 +11,31 @@ const TestPage = () => {
   const [selectedOption, setSelectedOption] = useState(null);
   const [showAnswer, setShowAnswer] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [score, setScore] = useState(0);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [testFinished, setTestFinished] = useState(false);
 
+  // ✅ Fetch questions
   useEffect(() => {
     const fetchQuestions = async () => {
-      setLoading(true);
       try {
+        setLoading(true);
         const { data, error } = await supabase
           .from("questions")
           .select("*")
-          .ilike("paper", paper)
-          .ilike("series", `%${series}%`)
-          .limit(50);
+          .eq("paper", paper)
+          .eq("series", series);
 
         if (error) throw error;
-
-        if (data && data.length > 0) {
-          setQuestions(data);
-        } else {
-          console.warn("⚠️ No questions found.");
+        if (!data || data.length === 0) {
+          setErrorMsg("No questions found for this test.");
           setQuestions([]);
+        } else {
+          setQuestions(data);
+          setErrorMsg("");
         }
       } catch (err) {
-        console.error("❌ Error loading questions:", err);
+        console.error("Error loading questions:", err);
+        setErrorMsg("Failed to load questions.");
       } finally {
         setLoading(false);
       }
@@ -42,153 +44,144 @@ const TestPage = () => {
     fetchQuestions();
   }, [paper, series]);
 
-  const handleOptionSelect = (option) => {
+  // ✅ Event Handlers
+  const handleOptionClick = (option) => {
+    if (showAnswer) return; // prevent changing after checking
     setSelectedOption(option);
   };
 
   const handleCheckAnswer = () => {
-    if (!selectedOption) return;
-    const currentQuestion = questions[currentIndex];
-    const correct = selectedOption.trim().toLowerCase() === currentQuestion.correct_option?.trim().toLowerCase();
-
-    if (correct) setScore((prev) => prev + 1);
+    if (!selectedOption) return alert("Please select an answer first!");
     setShowAnswer(true);
   };
 
   const handleNext = () => {
     if (currentIndex < questions.length - 1) {
       setCurrentIndex(currentIndex + 1);
-      setSelectedOption(null);
-      setShowAnswer(false);
+      resetQuestionState();
+    } else {
+      setTestFinished(true);
     }
   };
 
   const handlePrevious = () => {
     if (currentIndex > 0) {
       setCurrentIndex(currentIndex - 1);
-      setSelectedOption(null);
-      setShowAnswer(false);
+      resetQuestionState();
     }
   };
 
-  const handleFinish = () => {
-    navigate(`/summary?score=${score}&total=${questions.length}&paper=${paper}`);
+  const resetQuestionState = () => {
+    setSelectedOption(null);
+    setShowAnswer(false);
   };
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center min-h-screen text-lg text-gray-600">
-        Loading questions...
-      </div>
-    );
-  }
+  const handleFinish = () => {
+    alert("Test finished! Redirecting to performance page...");
+    navigate("/performance");
+  };
 
-  if (!questions.length) {
+  // ✅ UI Rendering
+  if (loading) return <div className="p-6 text-center text-gray-500">Loading questions...</div>;
+  if (errorMsg) return <div className="p-6 text-center text-red-500">{errorMsg}</div>;
+  if (testFinished)
     return (
-      <div className="flex justify-center items-center min-h-screen text-lg text-red-500">
-        No questions found for this paper and series.
+      <div className="p-6 text-center">
+        <h2 className="text-xl font-bold mb-4">🎉 Test Completed!</h2>
+        <button
+          onClick={() => navigate("/performance")}
+          className="bg-blue-500 text-white px-4 py-2 rounded"
+        >
+          View Performance
+        </button>
       </div>
     );
-  }
 
   const q = questions[currentIndex];
 
-  // ✅ Remove "Answer:" from question text automatically
-  const rawQuestion =
-    q.question || q.question_text || q.text || "No question text found";
-  const questionText = rawQuestion.replace(/Answer:.*/i, "").trim();
-
-  const options = [
-    q.option_a,
-    q.option_b,
-    q.option_c,
-    q.option_d,
-  ].filter(Boolean);
-
   return (
-    <div className="flex flex-col items-center p-6 bg-gray-50 min-h-screen">
-      <div className="w-full max-w-4xl bg-white shadow-lg rounded-2xl p-6">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-semibold text-gray-800">
-            {paper} – {series} ({currentIndex + 1}/{questions.length})
-          </h2>
-          <button
-            onClick={handleFinish}
-            className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 transition"
-          >
-            Finish Test
-          </button>
-        </div>
+    <div className="max-w-3xl mx-auto p-6">
+      <div className="mb-6">
+        <h2 className="text-lg font-semibold text-gray-700">
+          {paper} - {series}
+        </h2>
+        <p className="text-gray-500">
+          Question {currentIndex + 1} of {questions.length}
+        </p>
+      </div>
 
-        <div className="text-gray-800 text-lg font-medium mb-4">
-          {questionText}
-        </div>
+      {q ? (
+        <>
+          <h3 className="text-lg font-bold mb-4">{q.question}</h3>
+          <div className="space-y-3">
+            {["option_a", "option_b", "option_c", "option_d"].map((opt) => (
+              <button
+                key={opt}
+                onClick={() => handleOptionClick(q[opt])}
+                className={`block w-full text-left p-3 rounded-lg border ${
+                  selectedOption === q[opt]
+                    ? "bg-blue-100 border-blue-400"
+                    : "border-gray-300 hover:bg-gray-100"
+                }`}
+              >
+                {q[opt]}
+              </button>
+            ))}
+          </div>
 
-        <div className="space-y-3 mb-6">
-          {options.map((option, index) => (
-            <label
-              key={index}
-              className={`flex items-center border p-3 rounded-lg cursor-pointer transition ${
-                selectedOption === option
-                  ? "border-blue-500 bg-blue-50"
-                  : "border-gray-300 hover:border-blue-300"
-              }`}
-            >
-              <input
-                type="radio"
-                name="option"
-                value={option}
-                checked={selectedOption === option}
-                onChange={() => handleOptionSelect(option)}
-                className="mr-3"
-              />
-              {option}
-            </label>
-          ))}
-        </div>
+          <div className="mt-5 flex items-center gap-4">
+            {!showAnswer && (
+              <button
+                onClick={handleCheckAnswer}
+                className="bg-green-600 text-white px-4 py-2 rounded"
+              >
+                Check Answer
+              </button>
+            )}
 
-        <div className="flex justify-between">
-          <button
-            onClick={handlePrevious}
-            disabled={currentIndex === 0}
-            className="bg-gray-200 px-4 py-2 rounded text-gray-700 hover:bg-gray-300 disabled:opacity-50"
-          >
-            ← Previous
-          </button>
-
-          {!showAnswer ? (
-            <button
-              onClick={handleCheckAnswer}
-              className="bg-green-500 text-white px-6 py-2 rounded hover:bg-green-600 transition"
-              disabled={!selectedOption}
-            >
-              Check Answer
-            </button>
-          ) : (
-            <button
-              onClick={handleNext}
-              className="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600 transition"
-            >
-              Next →
-            </button>
-          )}
-        </div>
-
-        {showAnswer && (
-          <div className="mt-4 p-4 bg-green-50 border border-green-400 rounded-lg text-green-800">
-            <p className="font-semibold">
-              ✅ Correct Answer: {q.correct_option || "N/A"}
-            </p>
-            {q.rationale && (
-              <p className="mt-2 text-gray-700">
-                💡 Rationale: {q.rationale}
-              </p>
+            {showAnswer && (
+              <div className="p-4 bg-blue-50 rounded border border-blue-200 mt-4 w-full">
+                <p className="text-green-700 font-semibold">
+                  ✅ Correct Answer: {q.correct_answer}
+                </p>
+                {q.rationale && (
+                  <p className="mt-2 text-gray-700">
+                    <strong>Rationale:</strong> {q.rationale}
+                  </p>
+                )}
+              </div>
             )}
           </div>
-        )}
-      </div>
+
+          <div className="mt-6 flex justify-between">
+            <button
+              onClick={handlePrevious}
+              disabled={currentIndex === 0}
+              className="bg-gray-300 px-4 py-2 rounded disabled:opacity-50"
+            >
+              Previous
+            </button>
+
+            {currentIndex < questions.length - 1 ? (
+              <button
+                onClick={handleNext}
+                className="bg-blue-600 text-white px-4 py-2 rounded"
+              >
+                Next
+              </button>
+            ) : (
+              <button
+                onClick={handleFinish}
+                className="bg-green-600 text-white px-4 py-2 rounded"
+              >
+                Finish Test
+              </button>
+            )}
+          </div>
+        </>
+      ) : (
+        <div>No question data found.</div>
+      )}
     </div>
   );
-};
-
-export default TestPage;
+}
