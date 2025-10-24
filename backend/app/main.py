@@ -43,24 +43,13 @@ def root():
 # ==============================
 @app.get("/papers")
 def list_papers():
-    """List distinct papers from Supabase with better performance."""
-    try:
-        url = f"{SUPABASE_REST_URL}/questions?select=paper&distinct"
-        res = requests.get(url, headers=HEADERS, timeout=20)
-
-        if res.status_code != 200:
-            print("❌ Error fetching papers:", res.text)
-            raise HTTPException(status_code=500, detail="Failed to fetch papers")
-
-        data = res.json()
-        papers = sorted({q.get("paper") for q in data if q.get("paper")})
-        print("✅ Papers found:", papers)
-        return papers
-
-    except Exception as e:
-        print("🔥 Exception in /papers:", e)
-        raise HTTPException(status_code=500, detail=str(e))
-
+    """List distinct papers in Supabase"""
+    url = f"{SUPABASE_REST_URL}/questions?select=paper"
+    res = requests.get(url, headers=HEADERS)
+    if res.status_code != 200:
+        raise HTTPException(status_code=500, detail="Failed to fetch papers")
+    papers = sorted({q.get("paper") for q in res.json() if q.get("paper")})
+    return papers
 
 
 # ==============================
