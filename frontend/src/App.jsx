@@ -1,66 +1,75 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { AuthProvider } from "./context/AuthContext";
-import { TestProvider } from "./context/TestContext";
-import Login from "./pages/Login";
-import Dashboard from "./pages/Dashboard";
-import Home from "./pages/Home";
-import Practice from "./pages/Practice";
-import Performance from "./pages/Performance";
-import TestSummary from "./pages/TestSummary";
-import Settings from "./pages/Settings";
-import PrivateRoute from "./routes/PrivateRoute";
-import Navbar from "./components/Navbar";
-import Sidebar from "./components/Sidebar";
-import "./styles/globals.css";
+import React, { useEffect, useState } from "react";
+import Dashboard from "./components/Dashboard";
+import TestPage from "./components/TestPage";
+import Performance from "./components/Performance";
 
-function Layout({ children }) {
-  return (
-    <div className="flex">
-      <Sidebar />
-      <div className="flex-1">
-        <Navbar />
-        <main className="p-6">{children}</main>
-      </div>
-    </div>
-  );
-}
+const API_BASE = import.meta.env.VITE_API_URL || "https://apexnurses.onrender.com";
 
 export default function App() {
+  const [papers, setPapers] = useState([]);
+  const [series, setSeries] = useState([]);
+  const [selectedPaper, setSelectedPaper] = useState(null);
+  const [selectedSeries, setSelectedSeries] = useState(null);
+  const [questions, setQuestions] = useState([]);
+  const [view, setView] = useState("dashboard");
+  const [scoreData, setScoreData] = useState(null);
+
+  // Fetch papers automatically
+  useEffect(() => {
+    async function fetchPapers() {
+      const res = await fetch(`${API_BASE}/papers`);
+      const data = await res.json();
+      setPapers(data);
+    }
+    fetchPapers();
+  }, []);
+
+  // Load series for selected paper
+  async function loadSeries(paper) {
+    const res = await fetch(`${API_BASE}/series?paper=${paper}`);
+    const data = await res.json();
+    setSeries(data);
+    setSelectedPaper(paper);
+  }
+
+  // Start test
+  async function startTest(series) {
+    const res = await fetch(`${API_BASE}/cached_questions?paper=${selectedPaper}&series=${series}`);
+    const data = await res.json();
+    setQuestions(data);
+    setSelectedSeries(series);
+    setView("test");
+  }
+
+  // When test ends
+  function finishTest(score, total) {
+    setScoreData({ score, total, paper: selectedPaper, series: selectedSeries });
+    setView("performance");
+  }
+
   return (
-    <AuthProvider>
-      <TestProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<Login />} />
-            <Route element={<PrivateRoute />}>
-              <Route
-                path="/dashboard"
-                element={<Layout><Dashboard /></Layout>}
-              />
-              <Route
-                path="/home"
-                element={<Layout><Home /></Layout>}
-              />
-              <Route
-                path="/practice"
-                element={<Layout><Practice /></Layout>}
-              />
-              <Route
-                path="/performance"
-                element={<Layout><Performance /></Layout>}
-              />
-              <Route
-                path="/summary"
-                element={<Layout><TestSummary /></Layout>}
-              />
-              <Route
-                path="/settings"
-                element={<Layout><Settings /></Layout>}
-              />
-            </Route>
-          </Routes>
-        </BrowserRouter>
-      </TestProvider>
-    </AuthProvider>
+    <div className="min-h-screen bg-gray-50">
+      {view === "dashboard" && (
+        <Dashboard
+          papers={papers}
+          loadSeries={loadSeries}
+          selectedPaper={selectedPaper}
+          series={series}
+          startTest={startTest}
+        />
+      )}
+      {view === "test" && (
+        <TestPage
+          questions={questions}
+          finishTest={finishTest}
+          paper={selectedPaper}
+          series={selectedSeries}
+          goBack={() => setView("dashboard")}
+        />
+      )}
+      {view === "performance" && (
+        <Performance data={scoreData} goHome={() => setView("dashboard")} />
+      )}
+    </div>
   );
 }
