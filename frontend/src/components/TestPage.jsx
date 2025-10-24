@@ -1,152 +1,185 @@
-import React, { useEffect, useState } from "react";
-import axios from "axios";
+import React, { useState } from "react";
 
-export default function TestPage({ paper, series, onFinish }) {
-  const [questions, setQuestions] = useState([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [selectedOption, setSelectedOption] = useState(null);
+export default function TestPage({ questions, finishTest, paper, series, goBack }) {
+  const [current, setCurrent] = useState(0);
+  const [selected, setSelected] = useState(null);
   const [showAnswer, setShowAnswer] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [score, setScore] = useState(0);
+  const [showNav, setShowNav] = useState(false);
 
-  // Fetch questions from backend
-  useEffect(() => {
-    async function fetchQuestions() {
-      try {
-        setLoading(true);
-        const res = await axios.get(
-          `${import.meta.env.VITE_BACKEND_URL}/questions`,
-          {
-            params: { paper, series },
-          }
-        );
+  const q = questions[current];
 
-        if (Array.isArray(res.data) && res.data.length > 0) {
-          setQuestions(res.data);
-        } else {
-          setQuestions([]);
-          setError("No questions found for this paper/series.");
-        }
-      } catch (err) {
-        console.error("Error fetching questions:", err);
-        setError("Failed to load questions.");
-      } finally {
-        setLoading(false);
-      }
-    }
+  if (!q)
+    return (
+      <div className="p-10 text-center">
+        <p>No questions found.</p>
+        <button
+          onClick={goBack}
+          className="mt-4 bg-blue-600 text-white px-4 py-2 rounded"
+        >
+          ← Back
+        </button>
+      </div>
+    );
 
-    fetchQuestions();
-  }, [paper, series]);
+  // --- Handle flexible field names ---
+  const questionText = q.question || q.question_text || q.text || "No question text found";
+  const options = [
+    q.option_a || q.opt1 || q.option1,
+    q.option_b || q.opt2 || q.option2,
+    q.option_c || q.opt3 || q.option3,
+    q.option_d || q.opt4 || q.option4,
+  ].filter(Boolean);
+  const correctAnswer = q.correct_answer || q.answer || q.correct || "";
+  const rationale = q.rationale || q.explanation || "";
 
-  // Avoid .map errors
-  if (loading) return <div className="text-center mt-10">Loading questions...</div>;
-  if (error) return <div className="text-center mt-10 text-red-500">{error}</div>;
-  if (!questions || questions.length === 0)
-    return <div className="text-center mt-10 text-gray-500">No questions found.</div>;
+  const total = questions.length;
 
-  const currentQuestion = questions[currentIndex];
-
-  const handleCheckAnswer = () => {
-    if (selectedOption === null) return;
+  function submitAnswer() {
+    if (!selected) return;
+    const correct = selected === correctAnswer;
+    if (correct) setScore((s) => s + 1);
     setShowAnswer(true);
-  };
+  }
 
-  const handleNext = () => {
-    if (currentIndex < questions.length - 1) {
-      setCurrentIndex(currentIndex + 1);
-      setSelectedOption(null);
+  function nextQuestion() {
+    if (current < total - 1) {
+      setCurrent((c) => c + 1);
+      setSelected(null);
       setShowAnswer(false);
     }
-  };
+  }
 
-  const handlePrev = () => {
-    if (currentIndex > 0) {
-      setCurrentIndex(currentIndex - 1);
-      setSelectedOption(null);
+  function prevQuestion() {
+    if (current > 0) {
+      setCurrent((c) => c - 1);
+      setSelected(null);
       setShowAnswer(false);
     }
-  };
+  }
 
-  const handleFinish = () => {
-    if (onFinish) onFinish();
-  };
+  function handleFinish() {
+    finishTest(score, total);
+  }
 
   return (
-    <div className="max-w-3xl mx-auto bg-white shadow p-6 rounded-xl mt-8">
-      <h2 className="text-lg font-semibold mb-4">
-        {paper} — {series}
-      </h2>
-
-      <div className="mb-4">
-        <p className="text-gray-700 mb-3">
-          <strong>Q{currentIndex + 1}:</strong> {currentQuestion.question}
-        </p>
-        <div className="space-y-2">
-          {currentQuestion.options?.map((opt, i) => (
-            <label
-              key={i}
-              className={`block p-2 border rounded cursor-pointer ${
-                selectedOption === opt
-                  ? "border-blue-600 bg-blue-50"
-                  : "border-gray-300"
-              }`}
-            >
-              <input
-                type="radio"
-                name="answer"
-                value={opt}
-                checked={selectedOption === opt}
-                onChange={() => setSelectedOption(opt)}
-                className="mr-2"
-              />
-              {opt}
-            </label>
-          ))}
-        </div>
-
-        {showAnswer && (
-          <div className="mt-4 text-green-600">
-            ✅ Correct Answer: {currentQuestion.correct_answer}
-            <p className="text-gray-600 mt-1 italic">
-              💡 Rationale: {currentQuestion.rationale || "No rationale provided."}
-            </p>
-          </div>
-        )}
-      </div>
-
-      <div className="flex justify-between mt-6">
-        <button
-          onClick={handlePrev}
-          disabled={currentIndex === 0}
-          className="px-4 py-2 bg-gray-200 rounded disabled:opacity-50"
-        >
-          Previous
-        </button>
-        {!showAnswer ? (
+    <div className="p-6 max-w-3xl mx-auto bg-white rounded shadow mt-6 mb-10">
+      {/* Header */}
+      <div className="flex justify-between items-center mb-3">
+        <h2 className="text-lg font-semibold">
+          {paper} – {series} ({current + 1}/{total})
+        </h2>
+        <div className="flex gap-2">
           <button
-            onClick={handleCheckAnswer}
-            className="px-4 py-2 bg-blue-600 text-white rounded"
+            onClick={() => setShowNav(!showNav)}
+            className="bg-gray-200 px-3 py-1 rounded"
           >
-            Check Answer
+            ☰
           </button>
-        ) : (
-          <button
-            onClick={handleNext}
-            disabled={currentIndex === questions.length - 1}
-            className="px-4 py-2 bg-blue-600 text-white rounded"
-          >
-            Next
-          </button>
-        )}
-        {currentIndex === questions.length - 1 && (
           <button
             onClick={handleFinish}
-            className="px-4 py-2 bg-green-600 text-white rounded ml-2"
+            className="bg-red-500 text-white px-3 py-1 rounded"
           >
             Finish Test
           </button>
-        )}
+        </div>
       </div>
+
+      {/* Navigation grid */}
+      {showNav && (
+        <div className="flex flex-wrap gap-2 mb-4">
+          {questions.map((_, idx) => (
+            <button
+              key={idx}
+              onClick={() => setCurrent(idx)}
+              className={`px-3 py-1 rounded ${
+                idx === current ? "bg-blue-600 text-white" : "bg-gray-200"
+              }`}
+            >
+              {idx + 1}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Question */}
+      <p className="mb-3 font-medium">{questionText}</p>
+
+      {/* Options */}
+      <div className="flex flex-col gap-2">
+        {options.map((opt, idx) => (
+          <label
+            key={idx}
+            className={`border p-2 rounded cursor-pointer ${
+              selected === opt ? "bg-blue-50 border-blue-400" : ""
+            }`}
+          >
+            <input
+              type="radio"
+              name="option"
+              value={opt}
+              onChange={(e) => setSelected(e.target.value)}
+              className="mr-2"
+            />
+            {opt}
+          </label>
+        ))}
+      </div>
+
+      {/* Buttons */}
+      {!showAnswer && (
+        <div className="flex justify-between mt-6">
+          <button
+            onClick={prevQuestion}
+            disabled={current === 0}
+            className="bg-gray-300 px-3 py-1 rounded disabled:opacity-50"
+          >
+            ← Previous
+          </button>
+
+          <button
+            onClick={submitAnswer}
+            className="bg-green-600 text-white px-4 py-2 rounded"
+          >
+            Check Answer
+          </button>
+
+          <button
+            onClick={nextQuestion}
+            disabled={current === total - 1}
+            className="bg-blue-600 text-white px-3 py-1 rounded disabled:opacity-50"
+          >
+            Next →
+          </button>
+        </div>
+      )}
+
+      {/* Answer & Rationale */}
+      {showAnswer && (
+        <div className="mt-5 bg-blue-50 p-4 rounded">
+          <p className="text-green-600 font-semibold">
+            ✅ Correct Answer: {correctAnswer}
+          </p>
+          {rationale && (
+            <p className="mt-2 text-gray-700">{rationale}</p>
+          )}
+          <div className="flex justify-between mt-4">
+            <button
+              onClick={prevQuestion}
+              disabled={current === 0}
+              className="bg-gray-300 px-3 py-1 rounded disabled:opacity-50"
+            >
+              ← Previous
+            </button>
+            <button
+              onClick={nextQuestion}
+              className="bg-blue-600 text-white px-4 py-2 rounded"
+            >
+              Next Question →
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
