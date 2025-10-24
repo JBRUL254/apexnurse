@@ -1,7 +1,7 @@
 # backend/app/main.py
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
-from supabase import create_client, Client
+from supabase.client import create_client, Client
 import os
 
 # --- Environment setup ---
