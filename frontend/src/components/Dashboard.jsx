@@ -6,7 +6,7 @@ export default function Dashboard({ user, startTest, viewPerformance }) {
   const [papers, setPapers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedPaper, setSelectedPaper] = useState(null);
-  const BASE_URL = import.meta.env.VITE_API_URL || "https://your-backend-url.onrender.com";
+  const BASE_URL = import.meta.env.VITE_API_URL || "https://apexnurses-backend.onrender.com";
 
   useEffect(() => {
     async function fetchPapers() {
