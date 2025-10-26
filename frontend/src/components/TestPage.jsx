@@ -1,111 +1,118 @@
 import React, { useState } from "react";
-import axios from "axios";
 
-export default function TestPage({ questions, finishTest, paper, series, goBack, user }) {
+export default function TestPage({ questions, finishTest, paper, series, goBack }) {
   const [current, setCurrent] = useState(0);
-  const [selectedAnswers, setSelectedAnswers] = useState({});
+  const [selectedAnswers, setSelectedAnswers] = useState({}); // store selected per question
   const [showAnswer, setShowAnswer] = useState(false);
   const [score, setScore] = useState(0);
   const [showNav, setShowNav] = useState(false);
-  const [finished, setFinished] = useState(false);
 
   const q = questions[current];
-  const total = questions.length;
-  const selected = selectedAnswers[current] || null;
 
   if (!q)
     return (
       <div className="p-10 text-center">
         <p>No questions found.</p>
-        <button onClick={goBack} className="mt-4 bg-blue-600 text-white px-4 py-2 rounded">
+        <button
+          onClick={goBack}
+          className="mt-4 bg-blue-600 text-white px-4 py-2 rounded"
+        >
           ← Back
         </button>
       </div>
     );
 
+  // --- Normalize field names ---
   const questionText = q.question || q.question_text || q.text || "No question text found";
+
   const options = [
     q.option_a || q.opt1 || q.option1,
     q.option_b || q.opt2 || q.option2,
     q.option_c || q.opt3 || q.option3,
     q.option_d || q.opt4 || q.option4,
   ].filter(Boolean);
+
+  // 🧹 Clean potential spoilers
+  const cleanedOptions = options.map((opt) => opt.replace(/Answer:.*/i, "").trim());
+
   const correctAnswer = q.correct_answer || q.answer || q.correct || "";
   const rationale = q.rationale || q.explanation || "";
+  const total = questions.length;
 
-  const handleSelect = (opt) => {
-    setSelectedAnswers((prev) => ({ ...prev, [current]: opt }));
-  };
+  const selected = selectedAnswers[current] || null;
 
-  const submitAnswer = () => {
+  // --- handle selection ---
+  function handleSelect(option) {
+    setSelectedAnswers((prev) => ({
+      ...prev,
+      [current]: option,
+    }));
+  }
+
+  // --- handle checking ---
+  function submitAnswer() {
     if (!selected) return;
-    if (selected === correctAnswer) setScore((s) => s + 1);
+    const correct = selected === correctAnswer;
+    if (correct) setScore((s) => s + 1);
     setShowAnswer(true);
-  };
+  }
 
-  const nextQuestion = () => {
+  // --- handle navigation ---
+  function nextQuestion() {
     if (current < total - 1) {
       setCurrent((c) => c + 1);
       setShowAnswer(false);
     }
-  };
+  }
 
-  const prevQuestion = () => {
+  function prevQuestion() {
     if (current > 0) {
       setCurrent((c) => c - 1);
       setShowAnswer(false);
     }
-  };
+  }
 
-  const handleFinish = async () => {
-    const result = { user_id: user?.id || "guest", paper, series, score, total };
-    try {
-      await axios.post(`${import.meta.env.VITE_API_URL || "https://apexnurses.onrender.com"}/performance`, result);
-    } catch (err) {
-      console.error("Error saving performance:", err);
-    }
-    setFinished(true);
-  };
+  function handleJumpTo(index) {
+    setCurrent(index);
+    setShowAnswer(false);
+  }
 
-  if (finished)
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50">
-        <h1 className="text-2xl font-bold text-blue-600 mb-2">Test Complete ✅</h1>
-        <p>Paper: {paper}</p>
-        <p>Series: {series}</p>
-        <p className="text-lg font-semibold mt-3">
-          Score: {score} / {total} ({((score / total) * 100).toFixed(1)}%)
-        </p>
-        <button onClick={goBack} className="mt-6 bg-blue-600 text-white px-4 py-2 rounded">
-          Back to Dashboard
-        </button>
-      </div>
-    );
+  function handleFinish() {
+    finishTest(score, total);
+  }
 
   return (
     <div className="p-6 max-w-3xl mx-auto bg-white rounded shadow mt-6 mb-10">
+      {/* Header */}
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-lg font-semibold">
           {paper} – {series} ({current + 1}/{total})
         </h2>
         <div className="flex gap-2">
-          <button onClick={() => setShowNav(!showNav)} className="bg-gray-200 px-3 py-1 rounded">
+          <button
+            onClick={() => setShowNav(!showNav)}
+            className="bg-gray-200 px-3 py-1 rounded"
+          >
             ☰
           </button>
-          <button onClick={handleFinish} className="bg-red-500 text-white px-3 py-1 rounded">
+          <button
+            onClick={handleFinish}
+            className="bg-red-500 text-white px-3 py-1 rounded"
+          >
             Finish Test
           </button>
         </div>
       </div>
 
+      {/* Navigation grid (Question Tabs) */}
       {showNav && (
-        <div className="grid grid-cols-8 gap-2 mb-4 p-2 bg-gray-50 rounded border">
+        <div className="flex flex-wrap gap-2 mb-4 p-2 bg-gray-50 rounded border">
           {questions.map((_, idx) => {
             const answered = selectedAnswers[idx];
             return (
               <button
                 key={idx}
-                onClick={() => setCurrent(idx)}
+                onClick={() => handleJumpTo(idx)}
                 className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-semibold transition 
                   ${
                     idx === current
@@ -122,10 +129,12 @@ export default function TestPage({ questions, finishTest, paper, series, goBack,
         </div>
       )}
 
+      {/* Question */}
       <p className="mb-3 font-medium text-gray-800">{questionText}</p>
 
+      {/* Options */}
       <div className="flex flex-col gap-2">
-        {options.map((opt, idx) => (
+        {cleanedOptions.map((opt, idx) => (
           <label
             key={idx}
             className={`border p-2 rounded cursor-pointer ${
@@ -134,7 +143,8 @@ export default function TestPage({ questions, finishTest, paper, series, goBack,
           >
             <input
               type="radio"
-              name={`option-${current}`}
+              name={`option-${current}`} // unique per question
+              value={opt}
               checked={selected === opt}
               onChange={() => handleSelect(opt)}
               className="mr-2"
@@ -144,31 +154,121 @@ export default function TestPage({ questions, finishTest, paper, series, goBack,
         ))}
       </div>
 
-      {!showAnswer ? (
+      {/* Buttons */}
+      {!showAnswer && (
         <div className="flex justify-between mt-6">
-          <button onClick={prevQuestion} disabled={current === 0} className="bg-gray-300 px-3 py-1 rounded disabled:opacity-50">
+          <button
+            onClick={prevQuestion}
+            disabled={current === 0}
+            className="bg-gray-300 px-3 py-1 rounded disabled:opacity-50"
+          >
             ← Previous
           </button>
-          <button onClick={submitAnswer} className="bg-green-600 text-white px-4 py-2 rounded">
+
+          <button
+            onClick={submitAnswer}
+            className="bg-green-600 text-white px-4 py-2 rounded"
+          >
             Check Answer
           </button>
-          <button onClick={nextQuestion} disabled={current === total - 1} className="bg-blue-600 text-white px-3 py-1 rounded disabled:opacity-50">
+
+          <button
+            onClick={nextQuestion}
+            disabled={current === total - 1}
+            className="bg-blue-600 text-white px-3 py-1 rounded disabled:opacity-50"
+          >
             Next →
           </button>
         </div>
-      ) : (
+      )}
+
+      {/* Answer & Rationale */}
+      {showAnswer && (
         <div className="mt-5 bg-blue-50 p-4 rounded">
-          <p className="text-green-600 font-semibold">✅ Correct Answer: {correctAnswer}</p>
+          <p className="text-green-600 font-semibold">
+            ✅ Correct Answer: {correctAnswer}
+          </p>
           {rationale && <p className="mt-2 text-gray-700">{rationale}</p>}
           <div className="flex justify-between mt-4">
-            <button onClick={prevQuestion} disabled={current === 0} className="bg-gray-300 px-3 py-1 rounded disabled:opacity-50">
+            <button
+              onClick={prevQuestion}
+              disabled={current === 0}
+              className="bg-gray-300 px-3 py-1 rounded disabled:opacity-50"
+            >
               ← Previous
             </button>
-            <button onClick={nextQuestion} className="bg-blue-600 text-white px-4 py-2 rounded">
-              Next →
+            <button
+              onClick={nextQuestion}
+              className="bg-blue-600 text-white px-4 py-2 rounded"
+            >
+              Next Question →
             </button>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DASHBOARD JS
+import React from "react";
+
+export default function Dashboard({ papers, loadSeries, selectedPaper, series, startTest }) {
+  return (
+    <div className="flex flex-col items-center py-10">
+      <h1 className="text-3xl font-bold text-blue-600 mb-6">ApexNurse Dashboard</h1>
+
+      {!selectedPaper ? (
+        <>
+          <h2 className="text-xl mb-3">Select a Paper</h2>
+          <div className="flex flex-wrap justify-center gap-3">
+            {papers.map((p) => (
+              <button
+                key={p}
+                onClick={() => loadSeries(p)}
+                className="bg-white shadow px-4 py-2 rounded hover:bg-blue-50"
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+        </>
+      ) : (
+        <>
+          <h2 className="text-xl mb-3">Select a Series for {selectedPaper}</h2>
+          <div className="flex flex-wrap justify-center gap-3">
+            {series.map((s) => (
+              <button
+                key={s}
+                onClick={() => startTest(s)}
+                className="bg-blue-600 text-white px-4 py-2 rounded"
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-6 text-gray-500 hover:text-blue-600"
+          >
+            ← Back to Papers
+          </button>
+        </>
       )}
     </div>
   );
