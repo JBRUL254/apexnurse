@@ -23,28 +23,25 @@ HEADERS = {
 }
 
 # ==============================
-# MIDDLEWARE — FIXED CORS
+# MIDDLEWARE — FULL CORS FIX
 # ==============================
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # You can restrict this to your frontend domain
+    allow_origins=["*"],  # or ["https://apexnurse.onrender.com"]
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 @app.middleware("http")
-async def add_cors_headers(request: Request, call_next):
-    """Ensure all routes return proper CORS headers even on errors."""
+async def global_cors_fix(request: Request, call_next):
+    """Force CORS headers on *all* responses (even internal errors)."""
     try:
         response = await call_next(request)
     except Exception as e:
-        response = JSONResponse(
-            status_code=500,
-            content={"error": str(e)},
-        )
+        response = JSONResponse(status_code=500, content={"error": str(e)})
     response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Methods"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
     response.headers["Access-Control-Allow-Headers"] = "*"
     return response
 
@@ -68,7 +65,7 @@ def list_papers():
     return papers
 
 # ==============================
-# FETCH SERIES FOR PAPER
+# FETCH SERIES
 # ==============================
 @app.get("/series")
 def list_series(paper: str):
@@ -82,7 +79,7 @@ def list_series(paper: str):
     return s
 
 # ==============================
-# MAIN QUESTION FETCH
+# FETCH QUESTIONS
 # ==============================
 @app.get("/questions")
 def get_questions(paper: str, series: str = ""):
@@ -103,25 +100,12 @@ def get_questions(paper: str, series: str = ""):
             query = f"select=*&paper=ilike.%25{paper}%25&series=ilike.%25{s}%25&limit=9999"
             res = requests.get(f"{SUPABASE_REST_URL}/questions?{query}", headers=HEADERS)
             if res.status_code == 200:
-                data = res.json()
-                if data:
-                    all_questions.extend(data)
+                all_questions.extend(res.json())
 
-    if not all_questions:
-        print(f"[WARN] No questions found for paper='{paper}', series='{series}'")
-        try:
-            sample = requests.get(
-                f"{SUPABASE_REST_URL}/questions?select=paper,series,id&limit=10",
-                headers=HEADERS
-            ).json()
-            print("ℹ️ Example rows in DB:", sample)
-        except Exception:
-            pass
-
-    return all_questions
+    return all_questions or []
 
 # ==============================
-# CACHED VERSION
+# CACHE FETCH
 # ==============================
 @lru_cache(maxsize=64)
 def cached_fetch(paper, series):
@@ -134,7 +118,7 @@ def cached_questions(paper: str, series: str = ""):
     return [dict(d) for d in data]
 
 # ==============================
-# PERFORMANCE / ATTEMPTS
+# PERFORMANCE SAVE
 # ==============================
 @app.post("/performance")
 def save_performance(payload: dict):
@@ -145,58 +129,66 @@ def save_performance(payload: dict):
     return {"status": "ok"}
 
 # ==============================
-# DEEPSEEK REASONER (AI)
+# DEEPSEEK REASONER — FIXED
 # ==============================
 @app.get("/reasoner")
 def reasoner(question: str):
     if not DEEPSEEK_API_KEY:
         raise HTTPException(status_code=500, detail="DeepSeek API key missing")
 
-    url = "https://api.deepseek.com/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-        "Content-Type": "application/json",
-    }
-
-    payload = {
-        "model": "deepseek-reasoner",
-        "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "You are an expert nursing tutor. "
-                    "Given a question, provide the most accurate answer and a short rationale."
-                ),
-            },
-            {"role": "user", "content": question},
-        ],
-        "temperature": 0.3,
-    }
-
     try:
-        res = requests.post(url, headers=headers, json=payload, timeout=25)
-        data = res.json()
+        response = requests.post(
+            "https://api.deepseek.com/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "deepseek-reasoner",
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "You are a professional nursing tutor who provides accurate answers and brief rationales.",
+                    },
+                    {"role": "user", "content": question},
+                ],
+                "temperature": 0.4,
+            },
+            timeout=25,
+        )
+        data = response.json()
         answer_text = (
             data.get("choices", [{}])[0]
             .get("message", {})
-            .get("content", "No response from DeepSeek.")
+            .get("content", "")
         )
 
+        if not answer_text:
+            return {"answer": "No response from DeepSeek.", "rationale": ""}
+
+        # Split answer + rationale (if formatted)
         if "Rationale:" in answer_text:
             parts = answer_text.split("Rationale:")
             answer = parts[0].strip()
-            rationale = parts[1].strip() if len(parts) > 1 else ""
+            rationale = parts[1].strip()
         else:
-            answer = answer_text
-            rationale = ""
+            answer, rationale = answer_text.strip(), ""
 
-        return {"answer": answer, "rationale": rationale}
+        # ✅ Always return with CORS-safe JSON
+        return JSONResponse(
+            content={"answer": answer, "rationale": rationale},
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+                "Access-Control-Allow-Headers": "*",
+            },
+        )
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"DeepSeek request failed: {e}")
+        raise HTTPException(status_code=500, detail=f"DeepSeek request failed: {str(e)}")
 
 # ==============================
-# HEALTHCHECK
+# HEALTH
 # ==============================
 @app.get("/health")
 def health():
