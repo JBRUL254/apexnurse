@@ -24,8 +24,9 @@ HEADERS = {
 # MIDDLEWARE - FIXED CORS
 # ==============================
 origins = [
-    "https://apexnurse.onrender.com",  # your Render frontend
-    "http://localhost:5173",           # dev testing
+    "https://apexnurse.onrender.com",  # your frontend
+    "https://apexnurses.onrender.com", # alternate domain if you have both
+    "http://localhost:5173",
     "http://127.0.0.1:5173"
 ]
 
