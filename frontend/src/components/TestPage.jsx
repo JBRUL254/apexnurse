@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import sharkLogo from "../assets/deepseek-shark.png";
 
 export default function TestPage({ questions, finishTest, paper, series, goBack }) {
   const [current, setCurrent] = useState(0);
@@ -7,36 +8,28 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
   const [score, setScore] = useState(0);
   const [showNav, setShowNav] = useState(false);
   const [confirmExit, setConfirmExit] = useState(false);
+  const [deepSeekResponse, setDeepSeekResponse] = useState("");
+  const [loadingDeepSeek, setLoadingDeepSeek] = useState(false);
 
   const q = questions[current];
-
   if (!q)
     return (
       <div className="p-10 text-center">
         <p>No questions found.</p>
-        <button
-          onClick={goBack}
-          className="mt-4 bg-blue-600 text-white px-4 py-2 rounded"
-        >
+        <button onClick={goBack} className="mt-4 bg-blue-600 text-white px-4 py-2 rounded">
           ← Back
         </button>
       </div>
     );
 
-  const questionText =
-    q.question || q.question_text || q.text || "No question text found";
-
+  const questionText = q.question || q.question_text || q.text || "No question text found";
   const options = [
     q.option_a || q.opt1 || q.option1,
     q.option_b || q.opt2 || q.option2,
     q.option_c || q.opt3 || q.option3,
     q.option_d || q.opt4 || q.option4,
   ].filter(Boolean);
-
-  const cleanedOptions = options.map((opt) =>
-    opt.replace(/Answer:.*/i, "").trim()
-  );
-
+  const cleanedOptions = options.map((opt) => opt.replace(/Answer:.*/i, "").trim());
   const correctAnswer = q.correct_answer || q.answer || q.correct || "";
   const rationale = q.rationale || q.explanation || "";
   const total = questions.length;
@@ -60,6 +53,7 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
     if (current < total - 1) {
       setCurrent((c) => c + 1);
       setShowAnswer(false);
+      setDeepSeekResponse("");
     }
   }
 
@@ -67,25 +61,29 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
     if (current > 0) {
       setCurrent((c) => c - 1);
       setShowAnswer(false);
+      setDeepSeekResponse("");
     }
-  }
-
-  function handleJumpTo(index) {
-    setCurrent(index);
-    setShowAnswer(false);
   }
 
   function handleFinish() {
     finishTest(score, total);
   }
 
-  function handleExit() {
-    setConfirmExit(true);
-  }
-
-  function confirmExitAction(choice) {
-    if (choice === "yes") goBack();
-    setConfirmExit(false);
+  async function askDeepSeek() {
+    setLoadingDeepSeek(true);
+    setDeepSeekResponse("");
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_BASE}/api/deepseek`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: questionText }),
+      });
+      const data = await res.json();
+      setDeepSeekResponse(data.response || "No explanation found.");
+    } catch (err) {
+      setDeepSeekResponse("Error fetching explanation.");
+    }
+    setLoadingDeepSeek(false);
   }
 
   return (
@@ -96,76 +94,14 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
           {paper} – {series} ({current + 1}/{total})
         </h2>
         <div className="flex gap-2">
-          <button
-            onClick={() => setShowNav(!showNav)}
-            className="bg-gray-200 px-3 py-1 rounded"
-          >
+          <button onClick={() => setShowNav(!showNav)} className="bg-gray-200 px-3 py-1 rounded">
             ☰
           </button>
-          <button
-            onClick={handleExit}
-            className="bg-yellow-500 text-white px-3 py-1 rounded"
-          >
-            Exit Early
-          </button>
-          <button
-            onClick={handleFinish}
-            className="bg-red-500 text-white px-3 py-1 rounded"
-          >
+          <button onClick={handleFinish} className="bg-red-500 text-white px-3 py-1 rounded">
             Finish Test
           </button>
         </div>
       </div>
-
-      {/* Confirm Exit Modal */}
-      {confirmExit && (
-        <div className="bg-black bg-opacity-50 fixed inset-0 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded shadow-lg text-center">
-            <p className="mb-4">
-              ⚠️ Are you sure you want to exit? Your performance will not be
-              saved.
-            </p>
-            <div className="flex justify-center gap-4">
-              <button
-                onClick={() => confirmExitAction("yes")}
-                className="bg-red-500 text-white px-4 py-2 rounded"
-              >
-                Yes, Exit
-              </button>
-              <button
-                onClick={() => confirmExitAction("no")}
-                className="bg-gray-300 px-4 py-2 rounded"
-              >
-                No
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Navigation grid */}
-      {showNav && (
-        <div className="flex flex-wrap gap-2 mb-4 p-2 bg-gray-50 rounded border">
-          {questions.map((_, idx) => {
-            const answered = selectedAnswers[idx];
-            return (
-              <button
-                key={idx}
-                onClick={() => handleJumpTo(idx)}
-                className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-semibold transition ${
-                  idx === current
-                    ? "bg-blue-600 text-white"
-                    : answered
-                    ? "bg-green-400 text-white"
-                    : "bg-gray-200 text-gray-800"
-                }`}
-              >
-                {idx + 1}
-              </button>
-            );
-          })}
-        </div>
-      )}
 
       {/* Question */}
       <p className="mb-3 font-medium text-gray-800">{questionText}</p>
@@ -176,9 +112,7 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
           <label
             key={idx}
             className={`border p-2 rounded cursor-pointer ${
-              selected === opt
-                ? "bg-blue-50 border-blue-400"
-                : "border-gray-200"
+              selected === opt ? "bg-blue-50 border-blue-400" : "border-gray-200"
             }`}
           >
             <input
@@ -194,56 +128,30 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
         ))}
       </div>
 
-      {/* Buttons */}
-      {!showAnswer && (
-        <div className="flex justify-between mt-6">
-          <button
-            onClick={prevQuestion}
-            disabled={current === 0}
-            className="bg-gray-300 px-3 py-1 rounded disabled:opacity-50"
-          >
-            ← Previous
-          </button>
+      {/* DeepSeek button */}
+      <div className="mt-5 flex items-center gap-2">
+        <button
+          onClick={askDeepSeek}
+          className="flex items-center bg-cyan-600 text-white px-3 py-2 rounded hover:bg-cyan-700"
+        >
+          <img src={sharkLogo} alt="DeepSeek" className="w-5 h-5 mr-2" />
+          Ask DeepSeek
+        </button>
+        {loadingDeepSeek && <p className="text-sm text-gray-500">Thinking...</p>}
+      </div>
 
-          <button
-            onClick={submitAnswer}
-            className="bg-green-600 text-white px-4 py-2 rounded"
-          >
-            Check Answer
-          </button>
-
-          <button
-            onClick={nextQuestion}
-            disabled={current === total - 1}
-            className="bg-blue-600 text-white px-3 py-1 rounded disabled:opacity-50"
-          >
-            Next →
-          </button>
+      {deepSeekResponse && (
+        <div className="mt-3 bg-cyan-50 border border-cyan-200 p-3 rounded text-gray-800">
+          <h4 className="font-semibold text-cyan-700 mb-2">DeepSeek says:</h4>
+          <p>{deepSeekResponse}</p>
         </div>
       )}
 
-      {/* Answer & Rationale */}
+      {/* Answer Section */}
       {showAnswer && (
         <div className="mt-5 bg-blue-50 p-4 rounded">
-          <p className="text-green-600 font-semibold">
-            ✅ Correct Answer: {correctAnswer}
-          </p>
+          <p className="text-green-600 font-semibold">✅ Correct Answer: {correctAnswer}</p>
           {rationale && <p className="mt-2 text-gray-700">{rationale}</p>}
-          <div className="flex justify-between mt-4">
-            <button
-              onClick={prevQuestion}
-              disabled={current === 0}
-              className="bg-gray-300 px-3 py-1 rounded disabled:opacity-50"
-            >
-              ← Previous
-            </button>
-            <button
-              onClick={nextQuestion}
-              className="bg-blue-600 text-white px-4 py-2 rounded"
-            >
-              Next Question →
-            </button>
-          </div>
         </div>
       )}
     </div>
