@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from functools import lru_cache
 import os, requests
 
+from deepseek_router import router as deepseek_router
+
 app = FastAPI(title="ApexNurse Webservice")
 
 # ==============================
@@ -31,16 +33,14 @@ app.add_middleware(
 )
 
 # ==============================
-# BASIC ROUTE
+# ROUTES
 # ==============================
+
 @app.get("/")
 def root():
     return {"message": "✅ ApexNurse backend running successfully."}
 
 
-# ==============================
-# FETCH PAPERS
-# ==============================
 @app.get("/papers")
 def list_papers():
     """List distinct papers in Supabase"""
@@ -52,9 +52,6 @@ def list_papers():
     return papers
 
 
-# ==============================
-# FETCH SERIES FOR PAPER
-# ==============================
 @app.get("/series")
 def list_series(paper: str):
     """List distinct series for a paper"""
@@ -68,14 +65,9 @@ def list_series(paper: str):
     return s
 
 
-# ==============================
-# MAIN QUESTION FETCH
-# ==============================
 @app.get("/questions")
 def get_questions(paper: str, series: str = ""):
-    """
-    Fetch questions for one or multiple series within a paper.
-    """
+    """Fetch questions for a paper or series"""
     if not paper:
         raise HTTPException(status_code=400, detail="Missing paper parameter")
 
@@ -99,25 +91,13 @@ def get_questions(paper: str, series: str = ""):
 
     if not all_questions:
         print(f"[WARN] No questions found for paper='{paper}', series='{series}'")
-        try:
-            sample = requests.get(
-                f"{SUPABASE_REST_URL}/questions?select=paper,series,id&limit=10",
-                headers=HEADERS
-            ).json()
-            print("ℹ️ Example rows in DB:", sample)
-        except Exception:
-            pass
 
     return all_questions
 
 
-# ==============================
-# CACHED VERSION (faster repeat load)
-# ==============================
 @lru_cache(maxsize=64)
 def cached_fetch(paper, series):
     data = get_questions(paper, series)
-    # Convert list to tuple for lru_cache compatibility
     return tuple([tuple(q.items()) for q in data])
 
 
@@ -125,19 +105,12 @@ def cached_fetch(paper, series):
 def cached_questions(paper: str, series: str = ""):
     """Serve questions with caching"""
     data = cached_fetch(paper, series)
-    # Convert back to list of dicts
     return [dict(d) for d in data]
 
 
-# ==============================
-# PERFORMANCE / ATTEMPTS (Optional)
-# ==============================
 @app.post("/performance")
 def save_performance(payload: dict):
-    """
-    Save user performance summary to Supabase (optional)
-    Expected: {user_id, paper, series, score, total}
-    """
+    """Save user performance summary"""
     url = f"{SUPABASE_REST_URL}/performance"
     res = requests.post(url, headers=HEADERS, json=payload)
     if res.status_code not in (200, 201):
@@ -145,9 +118,11 @@ def save_performance(payload: dict):
     return {"status": "ok"}
 
 
-# ==============================
-# HEALTHCHECK
-# ==============================
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+# ==============================
+# INCLUDE DEEPSEEK ROUTER
+# ==============================
+app.include_router(deepseek_router, prefix="/api")
