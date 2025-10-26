@@ -75,30 +75,50 @@ def list_series(paper: str):
 # ==============================
 @app.get("/questions")
 def get_questions(paper: str, series: str = ""):
+    """
+    Fetch questions by paper and optional series (case-insensitive, flexible match).
+    """
     if not paper:
         raise HTTPException(status_code=400, detail="Missing paper parameter")
 
     paper = paper.strip()
-    series_list = [s.strip() for s in series.split(";") if s.strip()]
+    series = series.strip() if series else ""
+
     all_questions = []
 
-    if not series_list:
-        query = f"select=*&paper=ilike.%25{paper}%25&limit=9999"
-        res = requests.get(f"{SUPABASE_REST_URL}/questions?{query}", headers=HEADERS)
-        if res.status_code == 200:
-            all_questions.extend(res.json())
+    # Build flexible query (both paper and optional series)
+    if series:
+        query = (
+            f"select=*&paper=ilike.%25{paper}%25&series=ilike.%25{series}%25&limit=9999"
+        )
     else:
-        for s in series_list:
-            query = f"select=*&paper=ilike.%25{paper}%25&series=ilike.%25{s}%25&limit=9999"
-            res = requests.get(f"{SUPABASE_REST_URL}/questions?{query}", headers=HEADERS)
-            if res.status_code == 200:
-                data = res.json()
-                if data:
-                    all_questions.extend(data)
+        query = f"select=*&paper=ilike.%25{paper}%25&limit=9999"
 
+    url = f"{SUPABASE_REST_URL}/questions?{query}"
+    res = requests.get(url, headers=HEADERS)
+
+    # Handle response
+    if res.status_code == 200:
+        data = res.json()
+        if data:
+            all_questions.extend(data)
+        else:
+            print(f"[INFO] No questions matched paper='{paper}', series='{series}'")
+    else:
+        print(f"[ERROR] Supabase query failed: {res.status_code} {res.text}")
+        raise HTTPException(status_code=res.status_code, detail=res.text)
+
+    # Safety check
     if not all_questions:
-        print(f"[WARN] No questions found for paper='{paper}', series='{series}'")
+        # Try a broader fallback (just list first few for debugging)
+        fallback = requests.get(
+            f"{SUPABASE_REST_URL}/questions?select=paper,series,id&limit=5",
+            headers=HEADERS,
+        )
+        print("[DEBUG] Fallback sample:", fallback.json())
+        return []
 
+    print(f"[SUCCESS] Retrieved {len(all_questions)} questions.")
     return all_questions
 
 
