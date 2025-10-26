@@ -1,13 +1,13 @@
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from functools import lru_cache
 import os, requests
 
-app = FastAPI(title="ApexNurse Webservice")
+app = FastAPI(title="ApexNurse Backend API")
 
-# ==============================
+# =========================================================
 # CONFIGURATION
-# ==============================
+# =========================================================
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
@@ -20,14 +20,14 @@ HEADERS = {
     "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
 }
 
-# ==============================
-# MIDDLEWARE - FIXED CORS
-# ==============================
+# =========================================================
+# CORS MIDDLEWARE (✅ updated to include frontend)
+# =========================================================
 origins = [
-    "https://apexnurse.onrender.com",  # your frontend
-    "https://apexnurses.onrender.com", # alternate domain if you have both
+    "https://apexnurse.onrender.com",
+    "https://apexnurses.onrender.com",
     "http://localhost:5173",
-    "http://127.0.0.1:5173"
+    "http://127.0.0.1:5173",
 ]
 
 app.add_middleware(
@@ -38,87 +38,73 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ==============================
+# =========================================================
 # BASIC ROUTE
-# ==============================
+# =========================================================
 @app.get("/")
 def root():
     return {"message": "✅ ApexNurse backend running successfully."}
 
-# ==============================
+# =========================================================
 # FETCH PAPERS
-# ==============================
+# =========================================================
 @app.get("/papers")
 def list_papers():
-    """List distinct papers in Supabase"""
+    """List distinct paper names available"""
     url = f"{SUPABASE_REST_URL}/questions?select=paper"
     res = requests.get(url, headers=HEADERS)
+
     if res.status_code != 200:
         raise HTTPException(status_code=500, detail="Failed to fetch papers")
-    papers = sorted({q.get("paper") for q in res.json() if q.get("paper")})
+
+    data = res.json()
+    papers = sorted({(q.get("paper") or "").strip() for q in data if q.get("paper")})
+    if not papers:
+        raise HTTPException(status_code=404, detail="No papers found")
     return papers
 
-# ==============================
+# =========================================================
 # FETCH SERIES FOR PAPER
-# ==============================
+# =========================================================
 @app.get("/series")
 def list_series(paper: str):
-    """List distinct series for a given paper (supports quicktests & revisions)"""
+    """List distinct series for a given paper (flexible search)"""
     if not paper:
         raise HTTPException(status_code=400, detail="Missing paper name")
 
-    # Flexible match (case insensitive, partial match)
+    # Match papers like "Paper1 revision series 10" or "paper1_quicktest_19"
     url = f"{SUPABASE_REST_URL}/questions?select=series&paper=ilike.%25{paper}%25"
     res = requests.get(url, headers=HEADERS)
 
     if res.status_code != 200:
         raise HTTPException(status_code=500, detail="Failed to fetch series")
 
-    series_raw = {q.get("series") for q in res.json() if q.get("series")}
-    series_list = sorted(series_raw)
+    s = sorted({(q.get("series") or "").strip() for q in res.json() if q.get("series")})
+    if not s:
+        raise HTTPException(status_code=404, detail=f"No series found for {paper}")
+    return s
 
-    # Organize into two folders (Series vs Quicktests)
-    revision_series = [s for s in series_list if "revision" in s.lower()]
-    quicktests = [s for s in series_list if "quicktest" in s.lower()]
-
-    return {
-        "revision_series": revision_series,
-        "quicktests": quicktests
-    }
-
-# ==============================
-# MAIN QUESTION FETCH
-# ==============================
+# =========================================================
+# FETCH QUESTIONS
+# =========================================================
 @app.get("/questions")
-def get_questions(paper: str, series: str = Query(None)):
-    """
-    Fetch up to 120 questions for series, or 60 for quicktests.
-    Handles flexible matching.
-    """
+def get_questions(paper: str, series: str = ""):
+    """Fetch questions for a paper or specific series — flexible search."""
     if not paper:
         raise HTTPException(status_code=400, detail="Missing paper parameter")
 
     paper = paper.strip()
-    limit = 120
     all_questions = []
-
-    # Support multiple series separated by ";"
-    if series:
-        series_list = [s.strip() for s in series.split(";") if s.strip()]
-    else:
-        series_list = []
+    series_list = [s.strip() for s in series.split(";") if s.strip()]
 
     if not series_list:
-        query = f"select=*&paper=ilike.%25{paper}%25&limit={limit}"
+        query = f"select=*&paper=ilike.%25{paper}%25&limit=9999"
         res = requests.get(f"{SUPABASE_REST_URL}/questions?{query}", headers=HEADERS)
         if res.status_code == 200:
             all_questions.extend(res.json())
     else:
         for s in series_list:
-            s_clean = s.replace(" ", "%")
-            # Quicktests limited to 60 questions
-            series_limit = 60 if "quicktest" in s.lower() else 120
-            query = f"select=*&paper=ilike.%25{paper}%25&series=ilike.%25{s_clean}%25&limit={series_limit}"
+            query = f"select=*&paper=ilike.%25{paper}%25&series=ilike.%25{s}%25&limit=9999"
             res = requests.get(f"{SUPABASE_REST_URL}/questions?{query}", headers=HEADERS)
             if res.status_code == 200:
                 data = res.json()
@@ -126,21 +112,22 @@ def get_questions(paper: str, series: str = Query(None)):
                     all_questions.extend(data)
 
     if not all_questions:
-        print(f"[WARN] No questions found for '{paper}', '{series}'")
+        print(f"[WARN] No questions found for paper='{paper}', series='{series}'")
         try:
             sample = requests.get(
                 f"{SUPABASE_REST_URL}/questions?select=paper,series,id&limit=10",
-                headers=HEADERS
+                headers=HEADERS,
             ).json()
             print("ℹ️ Example rows in DB:", sample)
-        except Exception:
-            pass
+        except Exception as e:
+            print("⚠️ Sample fetch failed:", e)
+        raise HTTPException(status_code=404, detail="No questions found")
 
     return all_questions
 
-# ==============================
-# CACHED VERSION (Optional)
-# ==============================
+# =========================================================
+# CACHED VERSION
+# =========================================================
 @lru_cache(maxsize=64)
 def cached_fetch(paper, series):
     data = get_questions(paper, series)
@@ -148,44 +135,40 @@ def cached_fetch(paper, series):
 
 @app.get("/cached_questions")
 def cached_questions(paper: str, series: str = ""):
-    """Serve questions with caching"""
+    """Serve cached questions for better performance"""
     data = cached_fetch(paper, series)
     return [dict(d) for d in data]
 
-# ==============================
-# PERFORMANCE SAVE & HISTORY
-# ==============================
+# =========================================================
+# PERFORMANCE TRACKING
+# =========================================================
 @app.post("/performance")
 def save_performance(payload: dict):
     """
-    Save user performance summary to Supabase
+    Save user performance data to Supabase
     Expected: {user_id, paper, series, score, total}
     """
-    if not payload.get("user_id"):
-        raise HTTPException(status_code=400, detail="Missing user_id")
-
     url = f"{SUPABASE_REST_URL}/performance"
     res = requests.post(url, headers=HEADERS, json=payload)
 
     if res.status_code not in (200, 201):
+        print("⚠️ Performance save failed:", res.text)
         raise HTTPException(status_code=res.status_code, detail=res.text)
 
-    return {"status": "ok"}
+    return {"status": "ok", "message": "Performance saved successfully"}
 
-@app.get("/performance/history")
-def get_history(user_id: str):
-    """Get all saved performance results for a user"""
-    url = f"{SUPABASE_REST_URL}/performance?select=*&user_id=eq.{user_id}&order=id.desc"
+@app.get("/performance/{user_id}")
+def get_user_performance(user_id: str):
+    """Fetch all past performance records for a user"""
+    url = f"{SUPABASE_REST_URL}/performance?user_id=eq.{user_id}&select=*"
     res = requests.get(url, headers=HEADERS)
-
     if res.status_code != 200:
-        raise HTTPException(status_code=500, detail="Failed to fetch history")
+        raise HTTPException(status_code=500, detail="Failed to fetch performance")
+    return sorted(res.json(), key=lambda x: x.get("id", 0), reverse=True)
 
-    return res.json()
-
-# ==============================
-# HEALTHCHECK
-# ==============================
+# =========================================================
+# HEALTH CHECK
+# =========================================================
 @app.get("/health")
 def health():
     return {"status": "ok"}
