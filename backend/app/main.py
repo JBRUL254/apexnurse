@@ -73,9 +73,7 @@ def list_series(paper: str):
 # ==============================
 @app.get("/questions")
 def get_questions(paper: str, series: str = ""):
-    """
-    Fetch questions for one or multiple series within a paper.
-    """
+    """Fetch questions for one or multiple series within a paper."""
     if not paper:
         raise HTTPException(status_code=400, detail="Missing paper parameter")
 
@@ -99,40 +97,17 @@ def get_questions(paper: str, series: str = ""):
 
     if not all_questions:
         print(f"[WARN] No questions found for paper='{paper}', series='{series}'")
-        try:
-            sample = requests.get(f"{SUPABASE_REST_URL}/questions?select=paper,series,id&limit=10", headers=HEADERS).json()
-            print("ℹ️ Example rows in DB:", sample)
-        except Exception:
-            pass
 
     return all_questions
 
 
 # ==============================
-# CACHED VERSION (faster repeat load)
-# ==============================
-@lru_cache(maxsize=64)
-def cached_fetch(paper, series):
-    data = get_questions(paper, series)
-    # Convert list to tuple for lru_cache compatibility
-    return tuple([tuple(q.items()) for q in data])
-
-
-@app.get("/cached_questions")
-def cached_questions(paper: str, series: str = ""):
-    """Serve questions with caching"""
-    data = cached_fetch(paper, series)
-    # Convert back to list of dicts
-    return [dict(d) for d in data]
-
-
-# ==============================
-# PERFORMANCE / ATTEMPTS (Optional)
+# PERFORMANCE / ATTEMPTS
 # ==============================
 @app.post("/performance")
 def save_performance(payload: dict):
     """
-    Save user performance summary to Supabase (optional)
+    Save user performance summary to Supabase.
     Expected: {user_id, paper, series, score, total}
     """
     url = f"{SUPABASE_REST_URL}/performance"
@@ -140,6 +115,16 @@ def save_performance(payload: dict):
     if res.status_code not in (200, 201):
         raise HTTPException(status_code=res.status_code, detail=res.text)
     return {"status": "ok"}
+
+
+@app.get("/performance")
+def get_performance(user_id: str):
+    """Fetch all completed papers for a specific user"""
+    url = f"{SUPABASE_REST_URL}/performance?select=paper,series,score,total&user_id=eq.{user_id}"
+    res = requests.get(url, headers=HEADERS)
+    if res.status_code != 200:
+        raise HTTPException(status_code=500, detail="Failed to fetch performance")
+    return res.json()
 
 
 # ==============================
