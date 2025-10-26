@@ -1,5 +1,6 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from functools import lru_cache
 import os, requests
 
@@ -22,14 +23,30 @@ HEADERS = {
 }
 
 # ==============================
-# MIDDLEWARE
+# MIDDLEWARE — FIXED CORS
 # ==============================
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # You can restrict this to your frontend domain
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def add_cors_headers(request: Request, call_next):
+    """Ensure all routes return proper CORS headers even on errors."""
+    try:
+        response = await call_next(request)
+    except Exception as e:
+        response = JSONResponse(
+            status_code=500,
+            content={"error": str(e)},
+        )
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    return response
 
 # ==============================
 # BASIC ROUTE
@@ -43,7 +60,6 @@ def root():
 # ==============================
 @app.get("/papers")
 def list_papers():
-    """List distinct papers in Supabase"""
     url = f"{SUPABASE_REST_URL}/questions?select=paper"
     res = requests.get(url, headers=HEADERS)
     if res.status_code != 200:
@@ -56,7 +72,6 @@ def list_papers():
 # ==============================
 @app.get("/series")
 def list_series(paper: str):
-    """List distinct series for a paper"""
     if not paper:
         raise HTTPException(status_code=400, detail="Missing paper name")
     url = f"{SUPABASE_REST_URL}/questions?select=series&paper=ilike.%25{paper}%25"
@@ -71,7 +86,6 @@ def list_series(paper: str):
 # ==============================
 @app.get("/questions")
 def get_questions(paper: str, series: str = ""):
-    """Fetch questions for one or multiple series within a paper."""
     if not paper:
         raise HTTPException(status_code=400, detail="Missing paper parameter")
 
@@ -124,7 +138,6 @@ def cached_questions(paper: str, series: str = ""):
 # ==============================
 @app.post("/performance")
 def save_performance(payload: dict):
-    """Save user performance summary to Supabase"""
     url = f"{SUPABASE_REST_URL}/performance"
     res = requests.post(url, headers=HEADERS, json=payload)
     if res.status_code not in (200, 201):
@@ -136,7 +149,6 @@ def save_performance(payload: dict):
 # ==============================
 @app.get("/reasoner")
 def reasoner(question: str):
-    """Ask DeepSeek Reasoner 2 for answer + rationale."""
     if not DEEPSEEK_API_KEY:
         raise HTTPException(status_code=500, detail="DeepSeek API key missing")
 
@@ -164,15 +176,12 @@ def reasoner(question: str):
     try:
         res = requests.post(url, headers=headers, json=payload, timeout=25)
         data = res.json()
-
-        # Extract the model’s response
         answer_text = (
             data.get("choices", [{}])[0]
             .get("message", {})
             .get("content", "No response from DeepSeek.")
         )
 
-        # Simple parsing: split answer from rationale
         if "Rationale:" in answer_text:
             parts = answer_text.split("Rationale:")
             answer = parts[0].strip()
