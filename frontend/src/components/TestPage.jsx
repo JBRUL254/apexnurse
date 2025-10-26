@@ -199,28 +199,47 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
       {/* Question */}
       <p className="mb-3 font-medium text-gray-800">{questionText}</p>
 
-      {/* Options */}
+      {/* Options with Tick/X */}
       <div className="flex flex-col gap-2">
-        {cleanedOptions.map((opt, idx) => (
-          <label
-            key={idx}
-            className={`border p-2 rounded cursor-pointer ${
-              selected === opt
-                ? "bg-blue-50 border-blue-400"
-                : "border-gray-200"
-            }`}
-          >
-            <input
-              type="radio"
-              name={`option-${current}`}
-              value={opt}
-              checked={selected === opt}
-              onChange={() => handleSelect(opt)}
-              className="mr-2"
-            />
-            {opt}
-          </label>
-        ))}
+        {cleanedOptions.map((opt, idx) => {
+          const isSelected = selected === opt;
+          const isCorrect = showAnswer && opt === correctAnswer;
+          const isWrong = showAnswer && isSelected && opt !== correctAnswer;
+
+          return (
+            <label
+              key={idx}
+              className={`flex items-center border p-2 rounded cursor-pointer justify-between ${
+                isCorrect
+                  ? "bg-green-50 border-green-400"
+                  : isWrong
+                  ? "bg-red-50 border-red-400"
+                  : isSelected
+                  ? "bg-blue-50 border-blue-400"
+                  : "border-gray-200"
+              }`}
+            >
+              <div>
+                <input
+                  type="radio"
+                  name={`option-${current}`}
+                  value={opt}
+                  checked={isSelected}
+                  onChange={() => handleSelect(opt)}
+                  className="mr-2"
+                  disabled={showAnswer}
+                />
+                {opt}
+              </div>
+
+              {showAnswer && (
+                <span className="ml-2 text-lg">
+                  {isCorrect ? "✅" : isWrong ? "❌" : ""}
+                </span>
+              )}
+            </label>
+          );
+        })}
       </div>
 
       {/* DeepSeek Reasoner Button */}
