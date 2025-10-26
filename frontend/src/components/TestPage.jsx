@@ -2,10 +2,11 @@ import React, { useState } from "react";
 
 export default function TestPage({ questions, finishTest, paper, series, goBack }) {
   const [current, setCurrent] = useState(0);
-  const [selectedAnswers, setSelectedAnswers] = useState({}); // store selected per question
+  const [selectedAnswers, setSelectedAnswers] = useState({});
   const [showAnswer, setShowAnswer] = useState(false);
   const [score, setScore] = useState(0);
   const [showNav, setShowNav] = useState(false);
+  const [confirmExit, setConfirmExit] = useState(false);
 
   const q = questions[current];
 
@@ -22,8 +23,8 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
       </div>
     );
 
-  // --- Normalize field names ---
-  const questionText = q.question || q.question_text || q.text || "No question text found";
+  const questionText =
+    q.question || q.question_text || q.text || "No question text found";
 
   const options = [
     q.option_a || q.opt1 || q.option1,
@@ -32,16 +33,15 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
     q.option_d || q.opt4 || q.option4,
   ].filter(Boolean);
 
-  // 🧹 Clean potential spoilers
-  const cleanedOptions = options.map((opt) => opt.replace(/Answer:.*/i, "").trim());
+  const cleanedOptions = options.map((opt) =>
+    opt.replace(/Answer:.*/i, "").trim()
+  );
 
   const correctAnswer = q.correct_answer || q.answer || q.correct || "";
   const rationale = q.rationale || q.explanation || "";
   const total = questions.length;
-
   const selected = selectedAnswers[current] || null;
 
-  // --- handle selection ---
   function handleSelect(option) {
     setSelectedAnswers((prev) => ({
       ...prev,
@@ -49,7 +49,6 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
     }));
   }
 
-  // --- handle checking ---
   function submitAnswer() {
     if (!selected) return;
     const correct = selected === correctAnswer;
@@ -57,7 +56,6 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
     setShowAnswer(true);
   }
 
-  // --- handle navigation ---
   function nextQuestion() {
     if (current < total - 1) {
       setCurrent((c) => c + 1);
@@ -81,6 +79,15 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
     finishTest(score, total);
   }
 
+  function handleExit() {
+    setConfirmExit(true);
+  }
+
+  function confirmExitAction(choice) {
+    if (choice === "yes") goBack();
+    setConfirmExit(false);
+  }
+
   return (
     <div className="p-6 max-w-3xl mx-auto bg-white rounded shadow mt-6 mb-10">
       {/* Header */}
@@ -96,6 +103,12 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
             ☰
           </button>
           <button
+            onClick={handleExit}
+            className="bg-yellow-500 text-white px-3 py-1 rounded"
+          >
+            Exit Early
+          </button>
+          <button
             onClick={handleFinish}
             className="bg-red-500 text-white px-3 py-1 rounded"
           >
@@ -104,7 +117,33 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
         </div>
       </div>
 
-      {/* Navigation grid (Question Tabs) */}
+      {/* Confirm Exit Modal */}
+      {confirmExit && (
+        <div className="bg-black bg-opacity-50 fixed inset-0 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded shadow-lg text-center">
+            <p className="mb-4">
+              ⚠️ Are you sure you want to exit? Your performance will not be
+              saved.
+            </p>
+            <div className="flex justify-center gap-4">
+              <button
+                onClick={() => confirmExitAction("yes")}
+                className="bg-red-500 text-white px-4 py-2 rounded"
+              >
+                Yes, Exit
+              </button>
+              <button
+                onClick={() => confirmExitAction("no")}
+                className="bg-gray-300 px-4 py-2 rounded"
+              >
+                No
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Navigation grid */}
       {showNav && (
         <div className="flex flex-wrap gap-2 mb-4 p-2 bg-gray-50 rounded border">
           {questions.map((_, idx) => {
@@ -113,14 +152,13 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
               <button
                 key={idx}
                 onClick={() => handleJumpTo(idx)}
-                className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-semibold transition 
-                  ${
-                    idx === current
-                      ? "bg-blue-600 text-white"
-                      : answered
-                      ? "bg-green-400 text-white"
-                      : "bg-gray-200 text-gray-800"
-                  }`}
+                className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-semibold transition ${
+                  idx === current
+                    ? "bg-blue-600 text-white"
+                    : answered
+                    ? "bg-green-400 text-white"
+                    : "bg-gray-200 text-gray-800"
+                }`}
               >
                 {idx + 1}
               </button>
@@ -138,12 +176,14 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
           <label
             key={idx}
             className={`border p-2 rounded cursor-pointer ${
-              selected === opt ? "bg-blue-50 border-blue-400" : "border-gray-200"
+              selected === opt
+                ? "bg-blue-50 border-blue-400"
+                : "border-gray-200"
             }`}
           >
             <input
               type="radio"
-              name={`option-${current}`} // unique per question
+              name={`option-${current}`}
               value={opt}
               checked={selected === opt}
               onChange={() => handleSelect(opt)}
@@ -205,70 +245,6 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
             </button>
           </div>
         </div>
-      )}
-    </div>
-  );
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-DASHBOARD JS
-import React from "react";
-
-export default function Dashboard({ papers, loadSeries, selectedPaper, series, startTest }) {
-  return (
-    <div className="flex flex-col items-center py-10">
-      <h1 className="text-3xl font-bold text-blue-600 mb-6">ApexNurse Dashboard</h1>
-
-      {!selectedPaper ? (
-        <>
-          <h2 className="text-xl mb-3">Select a Paper</h2>
-          <div className="flex flex-wrap justify-center gap-3">
-            {papers.map((p) => (
-              <button
-                key={p}
-                onClick={() => loadSeries(p)}
-                className="bg-white shadow px-4 py-2 rounded hover:bg-blue-50"
-              >
-                {p}
-              </button>
-            ))}
-          </div>
-        </>
-      ) : (
-        <>
-          <h2 className="text-xl mb-3">Select a Series for {selectedPaper}</h2>
-          <div className="flex flex-wrap justify-center gap-3">
-            {series.map((s) => (
-              <button
-                key={s}
-                onClick={() => startTest(s)}
-                className="bg-blue-600 text-white px-4 py-2 rounded"
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-
-          <button
-            onClick={() => window.location.reload()}
-            className="mt-6 text-gray-500 hover:text-blue-600"
-          >
-            ← Back to Papers
-          </button>
-        </>
       )}
     </div>
   );
