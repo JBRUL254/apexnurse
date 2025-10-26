@@ -199,47 +199,28 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
       {/* Question */}
       <p className="mb-3 font-medium text-gray-800">{questionText}</p>
 
-      {/* Options with Tick/X indicators */}
+      {/* Options */}
       <div className="flex flex-col gap-2">
-        {cleanedOptions.map((opt, idx) => {
-          const isSelected = selected === opt;
-          const isCorrect = showAnswer && opt === correctAnswer;
-          const isWrong = showAnswer && isSelected && opt !== correctAnswer;
-
-          return (
-            <label
-              key={idx}
-              className={`flex items-center justify-between border p-2 rounded cursor-pointer ${
-                isCorrect
-                  ? "bg-green-50 border-green-500"
-                  : isWrong
-                  ? "bg-red-50 border-red-500"
-                  : isSelected
-                  ? "bg-blue-50 border-blue-400"
-                  : "border-gray-200"
-              }`}
-            >
-              <div>
-                <input
-                  type="radio"
-                  name={`option-${current}`}
-                  value={opt}
-                  checked={isSelected}
-                  onChange={() => handleSelect(opt)}
-                  className="mr-2"
-                  disabled={showAnswer}
-                />
-                {opt}
-              </div>
-
-              {showAnswer && (
-                <span className="ml-3 text-xl">
-                  {isCorrect ? "✅" : isWrong ? "❌" : ""}
-                </span>
-              )}
-            </label>
-          );
-        })}
+        {cleanedOptions.map((opt, idx) => (
+          <label
+            key={idx}
+            className={`border p-2 rounded cursor-pointer ${
+              selected === opt
+                ? "bg-blue-50 border-blue-400"
+                : "border-gray-200"
+            }`}
+          >
+            <input
+              type="radio"
+              name={`option-${current}`}
+              value={opt}
+              checked={selected === opt}
+              onChange={() => handleSelect(opt)}
+              className="mr-2"
+            />
+            {opt}
+          </label>
+        ))}
       </div>
 
       {/* DeepSeek Reasoner Button */}
@@ -249,6 +230,7 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
           disabled={loadingAI}
           className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 disabled:opacity-50"
         >
+          {/* Inline DeepSeek Shark Logo (SVG) */}
           <svg
             xmlns="http://www.w3.org/2000/svg"
             width="20"
@@ -279,7 +261,7 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
         </div>
       )}
 
-      {/* Navigation buttons */}
+      {/* Buttons */}
       {!showAnswer && (
         <div className="flex justify-between mt-6">
           <button
@@ -307,7 +289,7 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
         </div>
       )}
 
-      {/* Correct Answer + Explanation */}
+      {/* Answer & Rationale */}
       {showAnswer && (
         <div className="mt-5 bg-blue-50 p-4 rounded">
           <p className="text-green-600 font-semibold">
