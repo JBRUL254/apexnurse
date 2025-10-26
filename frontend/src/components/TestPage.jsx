@@ -199,7 +199,7 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
       {/* Question */}
       <p className="mb-3 font-medium text-gray-800">{questionText}</p>
 
-      {/* Options with Tick/X */}
+      {/* Options with Tick/X indicators */}
       <div className="flex flex-col gap-2">
         {cleanedOptions.map((opt, idx) => {
           const isSelected = selected === opt;
@@ -209,11 +209,11 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
           return (
             <label
               key={idx}
-              className={`flex items-center border p-2 rounded cursor-pointer justify-between ${
+              className={`flex items-center justify-between border p-2 rounded cursor-pointer ${
                 isCorrect
-                  ? "bg-green-50 border-green-400"
+                  ? "bg-green-50 border-green-500"
                   : isWrong
-                  ? "bg-red-50 border-red-400"
+                  ? "bg-red-50 border-red-500"
                   : isSelected
                   ? "bg-blue-50 border-blue-400"
                   : "border-gray-200"
@@ -233,7 +233,7 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
               </div>
 
               {showAnswer && (
-                <span className="ml-2 text-lg">
+                <span className="ml-3 text-xl">
                   {isCorrect ? "✅" : isWrong ? "❌" : ""}
                 </span>
               )}
@@ -249,7 +249,6 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
           disabled={loadingAI}
           className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 disabled:opacity-50"
         >
-          {/* Inline DeepSeek Shark Logo (SVG) */}
           <svg
             xmlns="http://www.w3.org/2000/svg"
             width="20"
@@ -280,7 +279,7 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
         </div>
       )}
 
-      {/* Buttons */}
+      {/* Navigation buttons */}
       {!showAnswer && (
         <div className="flex justify-between mt-6">
           <button
@@ -308,7 +307,7 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
         </div>
       )}
 
-      {/* Answer & Rationale */}
+      {/* Correct Answer + Explanation */}
       {showAnswer && (
         <div className="mt-5 bg-blue-50 p-4 rounded">
           <p className="text-green-600 font-semibold">
