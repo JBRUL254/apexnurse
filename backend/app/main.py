@@ -1,20 +1,20 @@
-from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from functools import lru_cache
-import os
-import requests
+import os, requests
 
 app = FastAPI(title="ApexNurse Webservice")
 
-# ======================================================
+# ==============================
 # CONFIGURATION
-# ======================================================
+# ==============================
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 
 if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
-    raise RuntimeError("❌ Missing SUPABASE credentials")
+    raise RuntimeError("❌ SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set")
 
 SUPABASE_REST_URL = f"{SUPABASE_URL}/rest/v1"
 HEADERS = {
@@ -22,50 +22,39 @@ HEADERS = {
     "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
 }
 
-# ======================================================
-# UNIVERSAL CORS HANDLER (Render-safe)
-# ======================================================
-ALLOWED_ORIGINS = {
-    "https://apexnurse.onrender.com",
-    "https://apexnurses.onrender.com",
-    "http://localhost:5173",
-}
+# ==============================
+# MIDDLEWARE — FULL CORS FIX
+# ==============================
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # or ["https://apexnurse.onrender.com"]
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.middleware("http")
-async def add_cors_headers(request: Request, call_next):
-    """Adds CORS headers to all responses — works on Render."""
-    origin = request.headers.get("origin")
-    response = None
-
-    # Handle preflight OPTIONS request
-    if request.method == "OPTIONS":
-        response = Response(status_code=204)
-    else:
+async def global_cors_fix(request: Request, call_next):
+    """Force CORS headers on *all* responses (even internal errors)."""
+    try:
         response = await call_next(request)
-
-    # Allow frontend origins
-    if origin in ALLOWED_ORIGINS:
-        response.headers["Access-Control-Allow-Origin"] = origin
-    else:
-        response.headers["Access-Control-Allow-Origin"] = "*"
-
+    except Exception as e:
+        response = JSONResponse(status_code=500, content={"error": str(e)})
+    response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type"
-    response.headers["Access-Control-Allow-Credentials"] = "true"
+    response.headers["Access-Control-Allow-Headers"] = "*"
     return response
 
-
-# ======================================================
+# ==============================
 # BASIC ROUTE
-# ======================================================
+# ==============================
 @app.get("/")
 def root():
     return {"message": "✅ ApexNurse backend running successfully."}
 
-
-# ======================================================
+# ==============================
 # FETCH PAPERS
-# ======================================================
+# ==============================
 @app.get("/papers")
 def list_papers():
     url = f"{SUPABASE_REST_URL}/questions?select=paper"
@@ -75,10 +64,9 @@ def list_papers():
     papers = sorted({q.get("paper") for q in res.json() if q.get("paper")})
     return papers
 
-
-# ======================================================
+# ==============================
 # FETCH SERIES
-# ======================================================
+# ==============================
 @app.get("/series")
 def list_series(paper: str):
     if not paper:
@@ -90,10 +78,9 @@ def list_series(paper: str):
     s = sorted({q.get("series") for q in res.json() if q.get("series")})
     return s
 
-
-# ======================================================
+# ==============================
 # FETCH QUESTIONS
-# ======================================================
+# ==============================
 @app.get("/questions")
 def get_questions(paper: str, series: str = ""):
     if not paper:
@@ -117,25 +104,22 @@ def get_questions(paper: str, series: str = ""):
 
     return all_questions or []
 
-
-# ======================================================
+# ==============================
 # CACHE FETCH
-# ======================================================
+# ==============================
 @lru_cache(maxsize=64)
 def cached_fetch(paper, series):
     data = get_questions(paper, series)
     return tuple([tuple(q.items()) for q in data])
-
 
 @app.get("/cached_questions")
 def cached_questions(paper: str, series: str = ""):
     data = cached_fetch(paper, series)
     return [dict(d) for d in data]
 
-
-# ======================================================
+# ==============================
 # PERFORMANCE SAVE
-# ======================================================
+# ==============================
 @app.post("/performance")
 def save_performance(payload: dict):
     url = f"{SUPABASE_REST_URL}/performance"
@@ -144,10 +128,9 @@ def save_performance(payload: dict):
         raise HTTPException(status_code=res.status_code, detail=res.text)
     return {"status": "ok"}
 
-
-# ======================================================
-# DEEPSEEK REASONER
-# ======================================================
+# ==============================
+# DEEPSEEK REASONER — FIXED
+# ==============================
 @app.get("/reasoner")
 def reasoner(question: str):
     if not DEEPSEEK_API_KEY:
@@ -165,7 +148,7 @@ def reasoner(question: str):
                 "messages": [
                     {
                         "role": "system",
-                        "content": "You are a professional nursing tutor giving short, precise rationales.",
+                        "content": "You are a professional nursing tutor who provides accurate answers and brief rationales.",
                     },
                     {"role": "user", "content": question},
                 ],
@@ -175,24 +158,38 @@ def reasoner(question: str):
         )
         data = response.json()
         answer_text = (
-            data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+            data.get("choices", [{}])[0]
+            .get("message", {})
+            .get("content", "")
         )
 
         if not answer_text:
             return {"answer": "No response from DeepSeek.", "rationale": ""}
 
+        # Split answer + rationale (if formatted)
         if "Rationale:" in answer_text:
-            answer, rationale = answer_text.split("Rationale:", 1)
-            return {"answer": answer.strip(), "rationale": rationale.strip()}
-        return {"answer": answer_text, "rationale": ""}
+            parts = answer_text.split("Rationale:")
+            answer = parts[0].strip()
+            rationale = parts[1].strip()
+        else:
+            answer, rationale = answer_text.strip(), ""
+
+        # ✅ Always return with CORS-safe JSON
+        return JSONResponse(
+            content={"answer": answer, "rationale": rationale},
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+                "Access-Control-Allow-Headers": "*",
+            },
+        )
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"DeepSeek request failed: {str(e)}")
 
-
-# ======================================================
-# HEALTH CHECK
-# ======================================================
+# ==============================
+# HEALTH
+# ==============================
 @app.get("/health")
 def health():
     return {"status": "ok"}
