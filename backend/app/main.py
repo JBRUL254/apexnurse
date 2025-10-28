@@ -5,20 +5,17 @@ from functools import lru_cache
 import os
 import requests
 
-# =====================================
-# APP INITIALIZATION
-# =====================================
 app = FastAPI(title="ApexNurse Webservice")
 
-# =====================================
-# ENVIRONMENT CONFIGURATION
-# =====================================
+# ======================================================
+# 🔧 ENV CONFIG
+# ======================================================
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 
 if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
-    raise RuntimeError("❌ SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set")
+    raise RuntimeError("❌ Missing SUPABASE credentials")
 
 SUPABASE_REST_URL = f"{SUPABASE_URL}/rest/v1"
 HEADERS = {
@@ -26,85 +23,83 @@ HEADERS = {
     "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
 }
 
-# =====================================
-# CORS CONFIGURATION (Render-safe)
-# =====================================
-allowed_origins = [
-    "https://apexnurse.onrender.com",
-    "https://apexnurses.onrender.com",  # optional backup
-    "http://localhost:5173",             # for local development
-]
-
+# ======================================================
+# 🌐 PERMANENT CORS FIX (WORKS ON RENDER)
+# ======================================================
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
+    allow_origins=[
+        "https://apexnurse.onrender.com",
+        "https://apexnurses.onrender.com",
+        "http://localhost:5173",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# =====================================
-# BASIC ROUTE
-# =====================================
+# ======================================================
+# 🔹 ROOT
+# ======================================================
 @app.get("/")
 def root():
-    return {"message": "✅ ApexNurse backend running successfully."}
+    return {"message": "✅ ApexNurse backend online"}
 
-# =====================================
-# FETCH PAPERS
-# =====================================
+# ======================================================
+# 📄 PAPERS
+# ======================================================
 @app.get("/papers")
 def list_papers():
-    url = f"{SUPABASE_REST_URL}/questions?select=paper"
-    res = requests.get(url, headers=HEADERS)
+    res = requests.get(f"{SUPABASE_REST_URL}/questions?select=paper", headers=HEADERS)
     if res.status_code != 200:
         raise HTTPException(status_code=500, detail="Failed to fetch papers")
     papers = sorted({q.get("paper") for q in res.json() if q.get("paper")})
     return papers
 
-# =====================================
-# FETCH SERIES
-# =====================================
+# ======================================================
+# 📚 SERIES
+# ======================================================
 @app.get("/series")
 def list_series(paper: str):
     if not paper:
         raise HTTPException(status_code=400, detail="Missing paper name")
-    url = f"{SUPABASE_REST_URL}/questions?select=series&paper=ilike.%25{paper}%25"
-    res = requests.get(url, headers=HEADERS)
+    res = requests.get(
+        f"{SUPABASE_REST_URL}/questions?select=series&paper=ilike.%25{paper}%25",
+        headers=HEADERS,
+    )
     if res.status_code != 200:
         raise HTTPException(status_code=500, detail="Failed to fetch series")
-    series_list = sorted({q.get("series") for q in res.json() if q.get("series")})
-    return series_list
+    s = sorted({q.get("series") for q in res.json() if q.get("series")})
+    return s
 
-# =====================================
-# FETCH QUESTIONS
-# =====================================
+# ======================================================
+# ❓ QUESTIONS
+# ======================================================
 @app.get("/questions")
 def get_questions(paper: str, series: str = ""):
     if not paper:
         raise HTTPException(status_code=400, detail="Missing paper parameter")
 
-    paper = paper.strip()
-    series_list = [s.strip() for s in series.split(";") if s.strip()]
     all_questions = []
-
-    if not series_list:
-        query = f"select=*&paper=ilike.%25{paper}%25&limit=9999"
-        res = requests.get(f"{SUPABASE_REST_URL}/questions?{query}", headers=HEADERS)
-        if res.status_code == 200:
-            all_questions.extend(res.json())
-    else:
-        for s in series_list:
-            query = f"select=*&paper=ilike.%25{paper}%25&series=ilike.%25{s}%25&limit=9999"
-            res = requests.get(f"{SUPABASE_REST_URL}/questions?{query}", headers=HEADERS)
+    if series:
+        for s in [x.strip() for x in series.split(";") if x.strip()]:
+            url = f"{SUPABASE_REST_URL}/questions?select=*&paper=ilike.%25{paper}%25&series=ilike.%25{s}%25"
+            res = requests.get(url, headers=HEADERS)
             if res.status_code == 200:
-                all_questions.extend(res.json())
+                all_questions += res.json()
+    else:
+        res = requests.get(
+            f"{SUPABASE_REST_URL}/questions?select=*&paper=ilike.%25{paper}%25",
+            headers=HEADERS,
+        )
+        if res.status_code == 200:
+            all_questions += res.json()
 
     return all_questions or []
 
-# =====================================
-# CACHED FETCH (PERFORMANCE BOOST)
-# =====================================
+# ======================================================
+# ⚡ CACHED FETCH
+# ======================================================
 @lru_cache(maxsize=64)
 def cached_fetch(paper, series):
     data = get_questions(paper, series)
@@ -115,9 +110,9 @@ def cached_questions(paper: str, series: str = ""):
     data = cached_fetch(paper, series)
     return [dict(d) for d in data]
 
-# =====================================
-# SAVE PERFORMANCE
-# =====================================
+# ======================================================
+# 💾 PERFORMANCE SAVE
+# ======================================================
 @app.post("/performance")
 def save_performance(payload: dict):
     url = f"{SUPABASE_REST_URL}/performance"
@@ -126,9 +121,9 @@ def save_performance(payload: dict):
         raise HTTPException(status_code=res.status_code, detail=res.text)
     return {"status": "ok"}
 
-# =====================================
-# DEEPSEEK REASONER INTEGRATION
-# =====================================
+# ======================================================
+# 🤖 DEEPSEEK INTEGRATION
+# ======================================================
 @app.get("/reasoner")
 def reasoner(question: str):
     if not DEEPSEEK_API_KEY:
@@ -144,21 +139,13 @@ def reasoner(question: str):
             json={
                 "model": "deepseek-reasoner",
                 "messages": [
-                    {
-                        "role": "system",
-                        "content": (
-                            "You are a professional nursing tutor. "
-                            "Answer accurately and include a short rationale."
-                        ),
-                    },
+                    {"role": "system", "content": "You are a nursing tutor giving concise answers with short rationale."},
                     {"role": "user", "content": question},
                 ],
-                "temperature": 0.4,
             },
             timeout=25,
         )
         data = response.json()
-
         answer_text = (
             data.get("choices", [{}])[0]
             .get("message", {})
@@ -169,30 +156,18 @@ def reasoner(question: str):
         if not answer_text:
             return {"answer": "No response from DeepSeek.", "rationale": ""}
 
-        # Split if rationale is included
         if "Rationale:" in answer_text:
-            parts = answer_text.split("Rationale:")
-            answer = parts[0].strip()
-            rationale = parts[1].strip()
-        else:
-            answer, rationale = answer_text, ""
+            ans, rat = answer_text.split("Rationale:", 1)
+            return {"answer": ans.strip(), "rationale": rat.strip()}
 
-        # Return as CORS-safe JSON
-        return JSONResponse(
-            content={"answer": answer, "rationale": rationale},
-            headers={
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-                "Access-Control-Allow-Headers": "*",
-            },
-        )
+        return {"answer": answer_text, "rationale": ""}
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"DeepSeek request failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"DeepSeek request failed: {e}")
 
-# =====================================
-# HEALTH CHECK
-# =====================================
+# ======================================================
+# 💚 HEALTH
+# ======================================================
 @app.get("/health")
 def health():
     return {"status": "ok"}
