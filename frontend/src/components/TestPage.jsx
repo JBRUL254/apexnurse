@@ -7,8 +7,7 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
   const [score, setScore] = useState(0);
   const [showNav, setShowNav] = useState(false);
   const [confirmExit, setConfirmExit] = useState(false);
-  const [aiResponse, setAiResponse] = useState(null);
-  const [loadingAI, setLoadingAI] = useState(false);
+  const [feedback, setFeedback] = useState(null);
 
   const q = questions[current];
 
@@ -44,31 +43,8 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
   const total = questions.length;
   const selected = selectedAnswers[current] || null;
 
-  // -------------------------------
-  // DeepSeek Reasoner Integration
-  // -------------------------------
-  async function askDeepSeek() {
-    setLoadingAI(true);
-    setAiResponse(null);
-    try {
-      const res = await fetch(
-        `https://apexnurses-backend.onrender.com/reasoner?question=${encodeURIComponent(
-          questionText
-        )}`,
-        { method: "GET" }
-      );
-      const data = await res.json();
-      setAiResponse(data);
-    } catch (err) {
-      setAiResponse({ answer: "⚠️ Unable to reach DeepSeek API.", rationale: "" });
-    } finally {
-      setLoadingAI(false);
-    }
-  }
-
-  // -------------------------------
-
   function handleSelect(option) {
+    if (showAnswer) return; // prevent changing after checking
     setSelectedAnswers((prev) => ({
       ...prev,
       [current]: option,
@@ -78,7 +54,12 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
   function submitAnswer() {
     if (!selected) return;
     const correct = selected === correctAnswer;
-    if (correct) setScore((s) => s + 1);
+    if (correct) {
+      setScore((s) => s + 1);
+      setFeedback("✅ Correct!");
+    } else {
+      setFeedback(`❌ Incorrect! The correct answer is: ${correctAnswer}`);
+    }
     setShowAnswer(true);
   }
 
@@ -86,7 +67,7 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
     if (current < total - 1) {
       setCurrent((c) => c + 1);
       setShowAnswer(false);
-      setAiResponse(null);
+      setFeedback(null);
     }
   }
 
@@ -94,14 +75,14 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
     if (current > 0) {
       setCurrent((c) => c - 1);
       setShowAnswer(false);
-      setAiResponse(null);
+      setFeedback(null);
     }
   }
 
   function handleJumpTo(index) {
     setCurrent(index);
     setShowAnswer(false);
-    setAiResponse(null);
+    setFeedback(null);
   }
 
   function handleFinish() {
@@ -116,6 +97,9 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
     if (choice === "yes") goBack();
     setConfirmExit(false);
   }
+
+  // Progress bar
+  const progress = ((current + 1) / total) * 100;
 
   return (
     <div className="p-6 max-w-3xl mx-auto bg-white rounded shadow mt-6 mb-10">
@@ -146,13 +130,20 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
         </div>
       </div>
 
+      {/* Progress Bar */}
+      <div className="h-2 bg-gray-200 rounded mb-4">
+        <div
+          className="h-2 bg-blue-500 rounded transition-all"
+          style={{ width: `${progress}%` }}
+        ></div>
+      </div>
+
       {/* Confirm Exit Modal */}
       {confirmExit && (
         <div className="bg-black bg-opacity-50 fixed inset-0 flex items-center justify-center z-50">
           <div className="bg-white p-6 rounded shadow-lg text-center">
             <p className="mb-4">
-              ⚠️ Are you sure you want to exit? Your performance will not be
-              saved.
+              ⚠️ Are you sure you want to exit? Your progress will not be saved.
             </p>
             <div className="flex justify-center gap-4">
               <button
@@ -181,13 +172,14 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
               <button
                 key={idx}
                 onClick={() => handleJumpTo(idx)}
-                className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-semibold transition ${
-                  idx === current
-                    ? "bg-blue-600 text-white"
-                    : answered
-                    ? "bg-green-400 text-white"
-                    : "bg-gray-200 text-gray-800"
-                }`}
+                className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-semibold transition 
+                  ${
+                    idx === current
+                      ? "bg-blue-600 text-white"
+                      : answered
+                      ? "bg-green-400 text-white"
+                      : "bg-gray-200 text-gray-800"
+                  }`}
               >
                 {idx + 1}
               </button>
@@ -199,64 +191,47 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
       {/* Question */}
       <p className="mb-3 font-medium text-gray-800">{questionText}</p>
 
-      {/* Options */}
+      {/* Options with ✓ or ❌ */}
       <div className="flex flex-col gap-2">
-        {cleanedOptions.map((opt, idx) => (
-          <label
-            key={idx}
-            className={`border p-2 rounded cursor-pointer ${
-              selected === opt
-                ? "bg-blue-50 border-blue-400"
-                : "border-gray-200"
-            }`}
-          >
-            <input
-              type="radio"
-              name={`option-${current}`}
-              value={opt}
-              checked={selected === opt}
-              onChange={() => handleSelect(opt)}
-              className="mr-2"
-            />
-            {opt}
-          </label>
-        ))}
+        {cleanedOptions.map((opt, idx) => {
+          let icon = "";
+          if (showAnswer) {
+            if (opt === correctAnswer) icon = "✅";
+            else if (opt === selected && opt !== correctAnswer) icon = "❌";
+          }
+
+          return (
+            <label
+              key={idx}
+              className={`border p-2 rounded cursor-pointer flex justify-between items-center ${
+                selected === opt
+                  ? "bg-blue-50 border-blue-400"
+                  : "border-gray-200"
+              }`}
+            >
+              <span>
+                <input
+                  type="radio"
+                  name={`option-${current}`}
+                  value={opt}
+                  checked={selected === opt}
+                  onChange={() => handleSelect(opt)}
+                  className="mr-2"
+                />
+                {opt}
+              </span>
+              <span className="text-lg">{icon}</span>
+            </label>
+          );
+        })}
       </div>
 
-      {/* DeepSeek Reasoner Button */}
-      <div className="mt-4 flex items-center gap-3">
-        <button
-          onClick={askDeepSeek}
-          disabled={loadingAI}
-          className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 disabled:opacity-50"
-        >
-          {/* Inline DeepSeek Shark Logo (SVG) */}
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="white"
-          >
-            <path d="M2 12c4-4 10-8 20-8-3 4-3 10 0 14-10 0-16-4-20-8zM4 12a8 8 0 0016 0 8 8 0 00-16 0z" />
-          </svg>
-          {loadingAI ? "Thinking..." : "Ask DeepSeek"}
-        </button>
-      </div>
-
-      {/* AI Response */}
-      {aiResponse && (
-        <div className="mt-4 bg-purple-50 border border-purple-300 p-4 rounded">
-          <h4 className="font-semibold text-purple-700 mb-1">
-            🧠 DeepSeek Response:
-          </h4>
-          <p>
-            <strong>Answer:</strong> {aiResponse.answer}
-          </p>
-          {aiResponse.rationale && (
-            <p className="mt-2 text-gray-700">
-              <strong>Reason:</strong> {aiResponse.rationale}
-            </p>
+      {/* Feedback message */}
+      {feedback && (
+        <div className="mt-4 text-center text-gray-800 font-semibold">
+          {feedback}
+          {rationale && showAnswer && (
+            <p className="mt-2 text-sm text-gray-600">{rationale}</p>
           )}
         </div>
       )}
@@ -289,28 +264,21 @@ export default function TestPage({ questions, finishTest, paper, series, goBack 
         </div>
       )}
 
-      {/* Answer & Rationale */}
       {showAnswer && (
-        <div className="mt-5 bg-blue-50 p-4 rounded">
-          <p className="text-green-600 font-semibold">
-            ✅ Correct Answer: {correctAnswer}
-          </p>
-          {rationale && <p className="mt-2 text-gray-700">{rationale}</p>}
-          <div className="flex justify-between mt-4">
-            <button
-              onClick={prevQuestion}
-              disabled={current === 0}
-              className="bg-gray-300 px-3 py-1 rounded disabled:opacity-50"
-            >
-              ← Previous
-            </button>
-            <button
-              onClick={nextQuestion}
-              className="bg-blue-600 text-white px-4 py-2 rounded"
-            >
-              Next Question →
-            </button>
-          </div>
+        <div className="flex justify-between mt-6">
+          <button
+            onClick={prevQuestion}
+            disabled={current === 0}
+            className="bg-gray-300 px-3 py-1 rounded disabled:opacity-50"
+          >
+            ← Previous
+          </button>
+          <button
+            onClick={nextQuestion}
+            className="bg-blue-600 text-white px-4 py-2 rounded"
+          >
+            Next Question →
+          </button>
         </div>
       )}
     </div>
