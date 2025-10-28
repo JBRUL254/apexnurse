@@ -3,7 +3,7 @@ import Dashboard from "./components/Dashboard";
 import TestPage from "./components/TestPage";
 import Performance from "./components/Performance";
 
-const API_BASE = import.meta.env.VITE_API_URL || "https://apexnurses-backend.onrender.com";
+const API_BASE = import.meta.env.VITE_API_URL || "https://apexnurses.onrender.com";
 
 export default function App() {
   const [papers, setPapers] = useState([]);
@@ -13,17 +13,8 @@ export default function App() {
   const [questions, setQuestions] = useState([]);
   const [view, setView] = useState("dashboard");
   const [scoreData, setScoreData] = useState(null);
-  const [darkMode, setDarkMode] = useState(false);
 
-  // Load theme preference
-  useEffect(() => {
-    if (localStorage.getItem("theme") === "dark") {
-      document.documentElement.classList.add("dark");
-      setDarkMode(true);
-    }
-  }, []);
-
-  // Fetch available papers
+  // Fetch papers automatically
   useEffect(() => {
     async function fetchPapers() {
       const res = await fetch(`${API_BASE}/papers`);
@@ -33,7 +24,7 @@ export default function App() {
     fetchPapers();
   }, []);
 
-  // Load series for a paper
+  // Load series for selected paper
   async function loadSeries(paper) {
     const res = await fetch(`${API_BASE}/series?paper=${paper}`);
     const data = await res.json();
@@ -41,64 +32,23 @@ export default function App() {
     setSelectedPaper(paper);
   }
 
-  // Start a test (series or random)
+  // Start test
   async function startTest(series) {
-    if (series === "practice-random") {
-      const res = await fetch(`${API_BASE}/questions?paper=${selectedPaper || "paper1"}`);
-      const all = await res.json();
-      const random20 = all.sort(() => 0.5 - Math.random()).slice(0, 20);
-      setQuestions(random20);
-      setSelectedSeries("🌀 Random Practice");
-    } else {
-      const res = await fetch(`${API_BASE}/cached_questions?paper=${selectedPaper}&series=${series}`);
-      const data = await res.json();
-      setQuestions(data);
-      setSelectedSeries(series);
-    }
+    const res = await fetch(`${API_BASE}/cached_questions?paper=${selectedPaper}&series=${series}`);
+    const data = await res.json();
+    setQuestions(data);
+    setSelectedSeries(series);
     setView("test");
   }
 
-  // Finish test and save to localStorage
+  // When test ends
   function finishTest(score, total) {
-    const record = {
-      paper: selectedPaper,
-      series: selectedSeries,
-      score,
-      total,
-      date: new Date().toLocaleString(),
-    };
-    const old = JSON.parse(localStorage.getItem("performance") || "[]");
-    localStorage.setItem("performance", JSON.stringify([record, ...old]));
-    setScoreData(record);
+    setScoreData({ score, total, paper: selectedPaper, series: selectedSeries });
     setView("performance");
   }
 
-  // Theme toggle
-  function toggleTheme() {
-    setDarkMode((prev) => !prev);
-    if (!darkMode) {
-      document.documentElement.classList.add("dark");
-      localStorage.setItem("theme", "dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-      localStorage.setItem("theme", "light");
-    }
-  }
-
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-all duration-500">
-      {/* Theme Toggle */}
-      <div className="absolute top-4 right-6">
-        <button
-          onClick={toggleTheme}
-          className="p-2 rounded-full bg-gray-200 dark:bg-gray-700 hover:scale-105 transition"
-          title="Toggle Theme"
-        >
-          {darkMode ? "☀️" : "🌙"}
-        </button>
-      </div>
-
-      {/* Views */}
+    <div className="min-h-screen bg-gray-50">
       {view === "dashboard" && (
         <Dashboard
           papers={papers}
@@ -123,3 +73,9 @@ export default function App() {
     </div>
   );
 }
+
+
+
+
+
+
