@@ -1,15 +1,30 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
 
-export default function Dashboard({
-  papers,
-  loadSeries,
-  selectedPaper,
-  series,
-  startTest,
-}) {
+export default function Dashboard({ papers, loadSeries, selectedPaper, series, startTest }) {
+  const [filter, setFilter] = useState("");
+  const [performance, setPerformance] = useState([]);
+
+  useEffect(() => {
+    const saved = JSON.parse(localStorage.getItem("performance") || "[]");
+    setPerformance(saved.slice(0, 10));
+  }, []);
+
   function handleRandomPractice() {
     startTest("practice-random");
   }
+
+  const filteredPapers = papers.filter((p) =>
+    p.toLowerCase().includes(filter.toLowerCase())
+  );
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-10 px-4">
@@ -17,14 +32,50 @@ export default function Dashboard({
         🩺 ApexNurse Practice Dashboard
       </h1>
 
-      {/* Step 1 — Choose Paper */}
+      {/* Search bar */}
+      {!selectedPaper && (
+        <div className="flex justify-center mb-6">
+          <input
+            type="text"
+            placeholder="🔍 Search papers..."
+            className="border dark:border-gray-700 rounded-lg px-4 py-2 w-64 dark:bg-gray-800 dark:text-gray-200"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+          />
+        </div>
+      )}
+
+      {/* Performance Chart */}
+      {performance.length > 0 && (
+        <div className="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-8 max-w-3xl mx-auto">
+          <h3 className="text-lg font-semibold mb-3 text-gray-700 dark:text-gray-200 text-center">
+            📈 Recent Performance
+          </h3>
+          <ResponsiveContainer width="100%" height={250}>
+            <LineChart data={performance.reverse()}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+              <YAxis domain={[0, 100]} />
+              <Tooltip />
+              <Line
+                type="monotone"
+                dataKey={(d) => (d.score / d.total) * 100}
+                stroke="#3b82f6"
+                dot
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* Papers or Series */}
       {!selectedPaper ? (
         <>
           <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-200 mb-3 text-center">
             Select a Paper to Begin
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 max-w-4xl mx-auto">
-            {papers.map((p) => (
+            {filteredPapers.map((p) => (
               <div
                 key={p}
                 onClick={() => loadSeries(p)}
@@ -42,7 +93,6 @@ export default function Dashboard({
         </>
       ) : (
         <>
-          {/* Step 2 — Series & Quicktests */}
           <div className="max-w-5xl mx-auto">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-semibold text-gray-800 dark:text-gray-100">
@@ -56,7 +106,6 @@ export default function Dashboard({
               </button>
             </div>
 
-            {/* Series Section */}
             <h3 className="text-lg font-medium text-gray-700 dark:text-gray-300 mb-3">
               📘 Series (120 Questions each)
             </h3>
@@ -84,7 +133,6 @@ export default function Dashboard({
                 ))}
             </div>
 
-            {/* Quicktests Section */}
             <h3 className="text-lg font-medium text-gray-700 dark:text-gray-300 mb-3">
               ⚡ Quick Tests (60 Questions each)
             </h3>
@@ -112,7 +160,6 @@ export default function Dashboard({
                 ))}
             </div>
 
-            {/* Random Practice Mode */}
             <div className="text-center mt-10">
               <button
                 onClick={handleRandomPractice}
